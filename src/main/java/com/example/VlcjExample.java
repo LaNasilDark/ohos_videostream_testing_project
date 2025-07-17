@@ -11,7 +11,7 @@ import java.awt.event.WindowEvent;
 
 /**
  * 简单的VLC-J媒体播放器示例
- * 演示如何使用VLC-J播放视频文件
+ * 演示如何使用VLC-J播放视频文件或网络流
  */
 public class VlcjExample {
 
@@ -21,7 +21,7 @@ public class VlcjExample {
 
     /**
      * 构造函数
-     * 
+     *
      * @param vlcPath VLC播放器的安装路径
      */
     public VlcjExample(String vlcPath) {
@@ -32,7 +32,8 @@ public class VlcjExample {
         frame.setLocationRelativeTo(null);
 
         // 提前初始化urlField，以避免在createControlPanel中出现空指针
-        urlField = new JTextField("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4");
+        // 更新默认值为TCP H264流的示例
+        urlField = new JTextField("tcp/h264://@:5555");
 
         // 通过指定VLC路径的工厂来创建媒体播放器组件
         // 这是解决 "VLC not found" 问题的推荐方法
@@ -60,14 +61,14 @@ public class VlcjExample {
 
     /**
      * 创建包含播放控件的面板
-     * 
+     *
      * @return 控制面板
      */
     private JPanel createControlPanel() {
         JPanel panel = new JPanel(new FlowLayout());
 
-        // URL输入
-        panel.add(new JLabel("媒体URL:"));
+        // MRL输入 (MRL: Media Resource Locator)
+        panel.add(new JLabel("媒体 MRL:"));
         urlField.setPreferredSize(new Dimension(400, 25));
         panel.add(urlField);
 
@@ -96,12 +97,22 @@ public class VlcjExample {
 
     /**
      * 播放指定的媒体
-     * 
-     * @param mediaPath 媒体的路径或URL
+     *
+     * @param mediaPath 媒体的路径或MRL
      */
     private void playMedia(String mediaPath) {
         MediaPlayer player = mediaPlayerComponent.mediaPlayer();
-        player.media().play(mediaPath);
+
+        // 对于TCP H264流，添加优化选项以减少延迟
+        if (mediaPath.startsWith("tcp/h264")) {
+            // :network-caching, :live-caching, :file-caching 设置缓存大小（毫秒）
+            // 较小的值可以降低延迟，但可能增加卡顿风险
+            String[] options = { ":network-caching=150", ":live-caching=150", ":file-caching=150" };
+            player.media().play(mediaPath, options);
+        } else {
+            player.media().play(mediaPath);
+        }
+
         System.out.println("正在播放: " + mediaPath);
     }
 
