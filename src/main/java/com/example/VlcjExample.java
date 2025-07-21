@@ -33,7 +33,7 @@ public class VlcjExample {
 
         // 提前初始化urlField，以避免在createControlPanel中出现空指针
         // 更新默认值为TCP H264流的示例
-        urlField = new JTextField("tcp/h264://@:5555");
+        urlField = new JTextField("tcp://127.0.0.1:8554");
 
         // 通过指定VLC路径的工厂来创建媒体播放器组件
         // 这是解决 "VLC not found" 问题的推荐方法
@@ -149,22 +149,30 @@ public class VlcjExample {
             e.printStackTrace();
         }
 
-        // !!! 重要：在这里设置您的VLC安装路径 !!!
-        // 默认的64位VLC安装路径。如果您的路径不同，或者您安装的是32位版本，请修改此字符串。
-        // 例如: "C:\\Program Files (x86)\\VideoLAN\\VLC"
-        final String vlcPath = "C:\\Program Files\\VideoLAN\\VLC";
+        // !!! 核心修改：使用相对路径来定位捆绑的VLC文件夹 !!!
+        // "./VLC" 表示在当前程序运行目录下的 "VLC" 文件夹。
+        // 这与您项目中的文件夹名称 "VLC" 保持一致。
+        final String vlcPath = "./VLC";
 
         // 在事件分发线程(EDT)中创建和显示GUI
         SwingUtilities.invokeLater(() -> {
             try {
+                // 增加一个检查，确保VLC目录存在，以便提供更清晰的错误信息
+                java.io.File vlcDir = new java.io.File(vlcPath);
+                if (!vlcDir.exists() || !vlcDir.isDirectory()) {
+                    throw new RuntimeException(
+                            "捆绑的VLC目录未找到！\n请确保 'VLC' 文件夹与您的JAR文件位于同一目录下。\n预期路径: " + vlcDir.getAbsolutePath());
+                }
+
                 VlcjExample player = new VlcjExample(vlcPath);
                 player.show();
             } catch (Exception e) {
                 e.printStackTrace();
+                // 更新错误对话框，以反映新的捆绑模式
                 JOptionPane.showMessageDialog(null,
                         "无法启动播放器，请检查以下几点：\n" +
-                                "1. VLC安装路径是否正确: " + vlcPath + "\n" +
-                                "2. VLC与Java的架构是否匹配（同为64位或32位）。\n\n" +
+                                "1. 'VLC' 文件夹是否与程序在同一目录下且文件完整。\n" +
+                                "2. 捆绑的VLC与Java的架构是否匹配（同为64位或32位）。\n\n" +
                                 "错误: " + e.getMessage(),
                         "启动错误",
                         JOptionPane.ERROR_MESSAGE);
