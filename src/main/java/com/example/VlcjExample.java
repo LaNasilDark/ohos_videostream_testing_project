@@ -152,7 +152,7 @@ public class VlcjExample {
         // !!! 核心修改：使用相对路径来定位捆绑的VLC文件夹 !!!
         // "./VLC" 表示在当前程序运行目录下的 "VLC" 文件夹。
         // 这与您项目中的文件夹名称 "VLC" 保持一致。
-        final String vlcPath = "./VLC";
+        final String vlcPath = "./vlc-module";
 
         // 在事件分发线程(EDT)中创建和显示GUI
         SwingUtilities.invokeLater(() -> {
