@@ -52,16 +52,4 @@ class ImageReceiver(QThread):
                         f.flush()
 
                         image_data.extend(packet)
-                    if len(image_data) == size:
-                        # Convert received data to QImage
-                        image = QImage.fromData(image_data)
-                        self.imageReceived.emit(image)
-
-                        # Calculate and update FPS
-                        current_time = time.time()
-                        frame_count += 1
-                        if current_time - last_time >= 1.0:  # Update every second
-                            fps = frame_count / (current_time - last_time)
-                            self.fpsUpdated.emit(fps)
-                            last_time = current_time
-                        frame_count = 0
+                    
