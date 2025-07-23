@@ -56,18 +56,14 @@ hdc -t %device_key% shell "mkdir -p /data/tmp"
 hdc -t %device_key% file send %SERVER_BINARY% /data/tmp/%SERVER_BINARY%
 hdc -t %device_key% shell "chmod +x /data/tmp/%SERVER_BINARY%"
 
-echo Starting %SERVER_BINARY% and setting forward proxy...
+echo Starting %SERVER_BINARY% on device...
 hdc -t %device_key% shell "/data/tmp/%SERVER_BINARY% >/dev/null 2>&1 &"
-hdc -t %device_key% fport tcp:8000 tcp:8000
 
 echo Waiting 1s for the server to be ready...
 timeout /t 1 >nul
 
-echo Starting client...
+echo Starting client for LAN communication...
 python ./client/main.py
-
-echo Removing forward proxy...
-hdc -t %device_key% fport rm tcp:8000 tcp:8000
 
 pause
 endlocal
