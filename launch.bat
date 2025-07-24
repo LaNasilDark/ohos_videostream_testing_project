@@ -1,6 +1,8 @@
 @echo off
 setlocal
 
+chcp 65001
+
 REM Allow external specification of device_key
 set device_key=%1
 
@@ -63,7 +65,7 @@ echo Waiting 1s for the server to be ready...
 timeout /t 1 >nul
 
 echo Starting client for LAN communication...
-python ./client/main.py
+java -cp classes com.example.H264StreamReceiver 192.168.5.114 8000
 
 pause
 endlocal
