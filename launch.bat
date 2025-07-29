@@ -68,4 +68,6 @@ echo Starting client for LAN communication...
 REM java -cp classes com.example.H264StreamReceiver 192.168.5.114 8000
 python ./client/main.py
 
+
+
 endlocal
