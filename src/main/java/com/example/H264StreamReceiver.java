@@ -258,6 +258,8 @@ public class H264StreamReceiver extends JFrame {
         try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
 
             byte[] buffer = new byte[4];
+            byte[] window = new byte[4]; // Sliding window for frame detection
+            int windowPos = 0;
 
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
 
@@ -274,13 +276,20 @@ public class H264StreamReceiver extends JFrame {
                 }
 
                 // Check if data starts with H.264 frame marker (0x00 0x00 0x00 0x01)
-                if (bytesRead == 4 &&
-                        buffer[0] == 0x00 &&
-                        buffer[1] == 0x00 &&
-                        buffer[2] == 0x00 &&
-                        buffer[3] == 0x01) {
-                    logMessage("接收到帧起始标识符");
-                    frameCount.incrementAndGet();
+                for (int i = 0; i < bytesRead; i++) {
+                    // 更新滑动窗口
+                    window[windowPos % 4] = buffer[i];
+                    windowPos++;
+
+                    // 检查窗口内容是否为 0x00 0x00 0x00 0x01
+                    if (windowPos >= 4 &&
+                            window[(windowPos - 4) % 4] == 0x00 &&
+                            window[(windowPos - 3) % 4] == 0x00 &&
+                            window[(windowPos - 2) % 4] == 0x00 &&
+                            window[(windowPos - 1) % 4] == 0x01) {
+                        logMessage("检测到帧起始标识符 (滑动窗口)");
+                        frameCount.incrementAndGet();
+                    }
                 }
 
                 // Log received data in hex format for debugging
