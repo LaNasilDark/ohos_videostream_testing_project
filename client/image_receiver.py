@@ -52,7 +52,8 @@ class ImageReceiver(QThread):
                     # Receive size of the image
                     data = sock.recv(4)
                     if data.startswith(b'\x00\x00\x00\x01'):
-                        print("Received start of frame marker")   
+                        print("Received start of frame marker")
+                        # f.write("Received start of frame marker\n".encode('utf-8'))   
                     if not data:
                         print("Connection closed by server.")
                         break
@@ -64,6 +65,7 @@ class ImageReceiver(QThread):
                     #     f.write(str(data[i:i+1]).encode('utf-8'))
                     #     f.flush()
                     f.write(data)
+                    # f.write('\n'.encode('utf-8'))
                     f.flush()    
 
                     # Receive the image data
