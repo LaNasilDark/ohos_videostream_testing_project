@@ -50,8 +50,9 @@ class ImageReceiver(QThread):
                     if not data:
                         print("Connection closed by server.")
                         break
-                    size = struct.unpack('I', data)[0]
-
+                    print(data)
+                    size = struct.unpack('!I', data)[0]
+                    print(size)
                     f.write(data)
                     f.flush()
 

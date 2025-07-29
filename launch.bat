@@ -65,7 +65,7 @@ echo Waiting 1s for the server to be ready...
 timeout /t 1 >nul
 
 echo Starting client for LAN communication...
-java -cp classes com.example.H264StreamReceiver 192.168.5.114 8000
+REM java -cp classes com.example.H264StreamReceiver 192.168.5.114 8000
+python ./client/main.py
 
-pause
 endlocal
