@@ -257,53 +257,45 @@ public class H264StreamReceiver extends JFrame {
     private void receiveH264Stream() {
         try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
 
-            byte[] sizeBuffer = new byte[4];
+            byte[] buffer = new byte[4];
 
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
 
-                // Read frame size (4 bytes, little endian)
-                int bytesRead = readExact(inputStream, sizeBuffer, 4);
-                logMessage("读取帧大小: " + bytesRead + " 字节");
-                if (bytesRead != 4) {
+                // Read 4 bytes at a time
+                int bytesRead = inputStream.read(buffer, 0, 4);
+
+                if (bytesRead == -1) {
                     logMessage("服务器连接已关闭");
                     break;
                 }
 
-                // Convert bytes to int (little endian)
-                int frameSize = ByteBuffer.wrap(sizeBuffer)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .getInt();
-
-                if (frameSize <= 0 || frameSize > 50 * 1024 * 1024) { // Max 10MB per frame
-                    logMessage("收到无效的帧大小: " + frameSize + " 字节");
+                if (bytesRead == 0) {
                     continue;
                 }
 
-                // Write size to output file
-                outputFileStream.write(sizeBuffer);
-                outputFileStream.flush();
-
-                // Read frame data
-                byte[] frameData = new byte[frameSize];
-                bytesRead = readExact(inputStream, frameData, frameSize);
-
-                if (bytesRead != frameSize) {
-                    logMessage("帧数据读取不完整，期望: " + frameSize + " 字节，实际: " + bytesRead + " 字节");
-                    break;
+                // Check if data starts with H.264 frame marker (0x00 0x00 0x00 0x01)
+                if (bytesRead == 4 &&
+                        buffer[0] == 0x00 &&
+                        buffer[1] == 0x00 &&
+                        buffer[2] == 0x00 &&
+                        buffer[3] == 0x01) {
+                    logMessage("接收到帧起始标识符");
+                    frameCount.incrementAndGet();
                 }
 
-                // Write frame data to output file
-                outputFileStream.write(frameData);
+                // Log received data in hex format for debugging
+                StringBuilder hexString = new StringBuilder();
+                for (int i = 0; i < bytesRead; i++) {
+                    hexString.append(String.format("0x%02X ", buffer[i] & 0xFF));
+                }
+                logMessage("接收数据: " + hexString.toString());
+
+                // Write data to output file
+                outputFileStream.write(buffer, 0, bytesRead);
                 outputFileStream.flush();
 
                 // Update statistics
-                updateStatistics(frameSize + 4); // Include size header
-
-                // Log frame information periodically
-                long currentFrame = frameCount.incrementAndGet();
-                if (currentFrame % 30 == 0) { // Log every 30 frames
-                    logMessage(String.format("接收帧 #%d，大小: %d 字节", currentFrame, frameSize));
-                }
+                updateStatistics(bytesRead);
 
                 // Update statistics display every second
                 long currentTime = System.currentTimeMillis();
