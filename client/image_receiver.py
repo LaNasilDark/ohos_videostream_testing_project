@@ -3,7 +3,7 @@ import struct
 import time
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtGui import QImage
-
+import queue
 
 PORT = 8000
 
@@ -43,31 +43,41 @@ class ImageReceiver(QThread):
 
             last_time = time.time()
             frame_count = 0
+            video_buffer = queue.Queue(maxsize=4)
+            
+            
             with open("recv.h264", 'wb') as f:
+            # with open("test.txt", 'wb') as f:
                 while True:
                     # Receive size of the image
                     data = sock.recv(4)
+                    if data.startswith(b'\x00\x00\x00\x01'):
+                        print("Received start of frame marker")   
                     if not data:
                         print("Connection closed by server.")
                         break
                     print(data)
-                    size = struct.unpack('!I', data)[0]
-                    print(size)
+                    # size = struct.unpack('!I', data)[0]
+                    # print(size)
+                    
+                    # for i in range(4):
+                    #     f.write(str(data[i:i+1]).encode('utf-8'))
+                    #     f.flush()
                     f.write(data)
-                    f.flush()
+                    f.flush()    
 
                     # Receive the image data
-                    image_data = bytearray()
-                    while len(image_data) < size:
-                        packet = sock.recv(size - len(image_data))
-                        if not packet:
-                            print("Connection closed unexpectedly.")
-                            break
+                    # image_data = bytearray()
+                    # while len(image_data) < size:
+                    #     packet = sock.recv(size - len(image_data))
+                    #     if not packet:
+                    #         print("Connection closed unexpectedly.")
+                    #         break
 
-                        f.write(packet)
-                        f.flush()
+                    #     f.write(packet)
+                    #     f.flush()
 
-                        image_data.extend(packet)
+                    #     image_data.extend(packet)
 
     def get_device_ip(self):
         """获取设备的IP地址"""
