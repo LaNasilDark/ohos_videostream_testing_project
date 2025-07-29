@@ -263,6 +263,7 @@ public class H264StreamReceiver extends JFrame {
 
                 // Read frame size (4 bytes, little endian)
                 int bytesRead = readExact(inputStream, sizeBuffer, 4);
+                logMessage("读取帧大小: " + bytesRead + " 字节");
                 if (bytesRead != 4) {
                     logMessage("服务器连接已关闭");
                     break;
@@ -273,7 +274,7 @@ public class H264StreamReceiver extends JFrame {
                         .order(ByteOrder.LITTLE_ENDIAN)
                         .getInt();
 
-                if (frameSize <= 0 || frameSize > 10 * 1024 * 1024) { // Max 10MB per frame
+                if (frameSize <= 0 || frameSize > 50 * 1024 * 1024) { // Max 10MB per frame
                     logMessage("收到无效的帧大小: " + frameSize + " 字节");
                     continue;
                 }
