@@ -31,6 +31,13 @@
             <version>5.9.3</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- JavaCV依赖 -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacv-platform</artifactId>
+            <version>1.5.8</version>
+        </dependency>
     </dependencies>
 
     <build>

@@ -34,6 +34,7 @@ public class H264StreamReceiver extends JFrame {
     private JTextField portField;
     private JLabel fpsLabel;
     private JLabel dataRateLabel;
+    
 
     // Network and threading
     private Socket clientSocket;
