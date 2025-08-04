@@ -1,70 +1,232 @@
-# VLC-J 视频播放器示例
+# H264 视频流接收器
 
-这是一个使用 Java Swing 和 [vlcj](https://github.com/caprica/vlcj) 库构建的简单视频播放器。
+这是一个基于 Java Swing 和 [JavaCV](https://github.com/bytedeco/javacv) 库构建的H.264视频流接收和播放应用程序。
 
-它演示了如何播放本地视频文件或网络流（如 TCP H264 流），并通过**捆绑（Bundling）VLC 运行时**实现了自包含（Self-contained）运行，用户无需在设备上预先安装 VLC。
+主要功能是从网络接收H.264视频流数据，进行实时解码和显示，同时将原始流数据保存到文件中。适用于视频监控、流媒体接收和视频流分析等场景。
 
-## 功能特性
+## 核心功能
 
-- **播放控制**: 支持播放、暂停和停止功能。
-- **媒体源**: 可以播放本地文件路径或网络媒体资源定位符 (MRL)。
-- **低延迟优化**: 为 TCP H264 流提供了缓存优化选项。
-- **自包含**: 将 VLC 核心文件与应用程序打包在一起，无需外部依赖。
+- **网络流接收**: 支持TCP连接接收H.264视频流数据
+- **实时视频播放**: 使用FFmpeg进行H.264解码和实时渲染显示
+- **流数据保存**: 将接收到的原始H.264数据流保存为文件
+- **性能监控**: 实时显示帧率、数据传输率等统计信息
+- **NALU分析**: 识别并显示H.264 NALU单元类型（SPS、PPS、IDR帧等）
+- **命令行支持**: 支持命令行参数自动连接到指定服务器
 
 ## 项目结构
 
 ```text
 ohos_videostream_testing_project/
-├── pom.xml                   # Maven 配置文件
-├── README.md                 # 项目说明
-├── VLC/                      # 捆绑的 VLC 运行时
-│   ├── libvlc.dll
-│   ├── libvlccore.dll
-│   └── plugins/
+├── pom.xml                               # Maven 配置文件
+├── README.md                             # 项目说明文档
+├── doablerelease/                        # 发布版本
+│   ├── udp-h264-1.0.0-jar-with-dependencies.jar
+│   └── vlc-module/                       # VLC运行时库（可选）
 └── src/
     └── main/
         └── java/
             └── com/
                 └── example/
-                    └── VlcjExample.java  # 主程序代码
+                    ├── H264StreamReceiver.java    # 主程序 - H.264流接收器
+                    ├── H264NaluSplitter.java      # H.264 NALU分割器
+                    ├── NetworkListener.java       # 网络监听器
+                    └── VlcjExample.java           # VLC播放器示例
 ```
 
-## 如何运行
+## 核心组件
 
-### 要求
+### H264StreamReceiver (主程序)
 
-- **Java Development Kit (JDK)**: 8 或更高版本。
-- **Maven**: 用于构建项目。
-- **架构匹配**: 捆绑的 VLC 文件架构（64位或32位）必须与运行程序的 Java (JVM) 架构完全一致。
+- **功能**: H.264视频流的网络接收、解码和显示
+- **特性**:
+  - 图形化用户界面，支持连接控制
+  - 实时视频渲染窗口
+  - 统计信息显示（帧率、数据率）
+  - 详细的日志记录
+  - 支持命令行参数自动连接
 
-### 从 IDE 运行
+### H264VideoRenderer (内嵌类)
 
-1. 克隆或下载项目。
-2. 使用您喜欢的 IDE (如 VS Code, IntelliJ IDEA, Eclipse) 打开项目。
-3. IDE 会自动识别为 Maven 项目并下载相关依赖。
-4. 找到 `src/main/java/com/example/VlcjExample.java` 文件并直接运行 `main` 方法。
+- **功能**: 使用JavaCV进行H.264解码和视频渲染
+- **特性**:
+  - 独立解码线程，提高性能
+  - 自适应画面缩放
+  - 帧计数显示
 
-### 从命令行运行 (使用 Maven)
+### H264NaluSplitter
 
-1. **编译和打包**:
-   在项目根目录下打开终端，运行以下命令来创建一个包含所有依赖的可执行 JAR 文件。
+- **功能**: H.264流的NALU单元分割和分析
+- **特性**: 识别SPS、PPS、IDR帧等不同类型的NALU
 
-   ```bash
-   # 编译项目并打包成一个 fat-jar
-   mvn clean compile assembly:single
+## 技术要求
+
+- **Java Development Kit (JDK)**: 11 或更高版本
+- **Maven**: 3.6 或更高版本用于构建项目
+- **系统架构**: 支持64位Windows/Linux系统
+- **网络环境**: 能够访问H.264视频流源
+
+## 运行方式
+
+### 1. IDE 中运行
+
+1. 使用 IDE (VS Code, IntelliJ IDEA, Eclipse) 打开项目
+2. IDE 会自动识别为 Maven 项目并下载依赖
+3. 找到 `src/main/java/com/example/H264StreamReceiver.java`
+4. 直接运行 `main` 方法启动程序
+
+### 2. 命令行运行
+
+#### 编译和打包
+
+```bash
+# 在项目根目录下执行
+mvn clean compile assembly:single
+```
+
+这会在 `target` 目录下生成包含所有依赖的可执行JAR文件：
+`udp-h264-1.0.0-jar-with-dependencies.jar`
+
+#### 启动程序
+
+```bash
+# 方式1: 直接启动GUI界面
+java -jar target/udp-h264-1.0.0-jar-with-dependencies.jar
+
+# 方式2: 使用命令行参数自动连接
+java -jar target/udp-h264-1.0.0-jar-with-dependencies.jar <服务器IP> <端口号>
+
+# 示例: 自动连接到192.168.5.114:8000
+java -jar target/udp-h264-1.0.0-jar-with-dependencies.jar 192.168.5.114 8000
+```
+
+### 3. 使用Maven插件运行
+
+```bash
+# 直接通过Maven运行
+mvn exec:java
+
+# 带参数运行
+mvn exec:java -Dexec.args="192.168.5.114 8000"
+```
+
+## 使用说明
+
+### GUI操作界面
+
+1. **连接设置**:
+   - 服务器地址: 输入H.264流服务器的IP地址
+   - 端口: 输入服务器端口号（默认8000）
+
+2. **控制按钮**:
+   - `连接`: 连接到指定的流服务器
+   - `断开连接`: 断开当前连接
+   - `显示视频`: 打开/关闭视频播放窗口
+   - `清空日志`: 清除日志内容并重置统计信息
+
+3. **统计信息**:
+   - 实时显示接收帧率 (fps)
+   - 实时显示数据传输率 (KB/s)
+
+4. **日志区域**:
+   - 显示连接状态、接收到的NALU类型
+   - 显示错误信息和调试信息
+
+### 视频窗口功能
+
+- 实时显示解码后的H.264视频
+- 自动适配窗口大小，保持视频比例
+- 显示已解码帧数统计
+- 支持独立窗口操作
+
+## 输出文件
+
+程序会将接收到的原始H.264流数据保存为 `recv.h264` 文件，该文件可以使用以下工具播放：
+
+```bash
+# 使用FFplay播放
+ffplay recv.h264
+
+# 使用VLC播放
+vlc recv.h264
+```
+
+## 技术特点
+
+### 高性能架构
+
+- **多线程设计**: 网络接收线程与视频解码线程分离，确保流畅的数据处理
+- **管道流处理**: 使用管道流在接收线程和解码线程间传输数据，减少内存拷贝
+- **缓冲优化**: 1MB管道缓冲区，适应网络抖动和解码速度差异
+
+### 智能NALU识别
+
+- 自动识别H.264起始码（0x00000001 / 0x000001）
+- 解析NALU类型：
+  - **SPS (7)**: 序列参数集
+  - **PPS (8)**: 图像参数集  
+  - **IDR帧 (5)**: 关键帧
+  - **非IDR帧 (1)**: 普通帧
+  - **SEI (6)**: 补充增强信息
+
+### 实时统计监控
+
+- 动态计算并显示帧率 (FPS)
+- 实时数据传输速率监控 (KB/s)
+- 总接收字节数和帧数统计
+- 详细的时间戳日志记录
+
+## 故障排除
+
+### 常见问题
+
+1. **连接失败**
+
+   ```text
+   错误: 无法连接到服务器 192.168.x.x:8000
    ```
 
-   这会使用 `maven-assembly-plugin` 在 `target` 目录下生成一个类似 `ohos_videostream_testing_project-1.0-SNAPSHOT-jar-with-dependencies.jar` 的文件。
+   - 检查服务器IP地址和端口是否正确
+   - 确认服务器正在运行并监听指定端口
+   - 检查防火墙设置是否阻止了连接
 
-2. **运行程序**:
-   确保 `VLC` 文件夹与生成的 JAR 文件位于同一目录，然后运行：
+2. **视频无法显示**
 
-   ```bash
-   # 将 'your-jar-file-name.jar' 替换为实际生成的文件名
-   java -jar target/ohos_videostream_testing_project-1.0-SNAPSHOT-jar-with-dependencies.jar
+   ```text
+   解码线程异常: xxxxx
    ```
 
-## 注意事项
+   - 确认接收到的数据是有效的H.264流
+   - 检查流是否包含必要的SPS/PPS参数集
+   - 验证JavaCV依赖是否正确安装
 
-- 如果程序启动失败并提示 "VLC 目录未找到"，请确保 `VLC` 文件夹与您的 JAR 文件或类路径根目录位于同一位置。
-- 如果遇到黑屏或无法播放，请检查 `VLC/plugins` 文件夹是否完整。
+3. **性能问题**
+   - 如果出现丢帧现象，可能是网络带宽不足
+   - 检查CPU使用率，解码H.264需要一定的计算资源
+   - 考虑调整缓冲区大小以适应网络条件
+
+### 调试建议
+
+- 启用详细日志记录，查看NALU类型和帧信息
+- 使用网络抓包工具验证数据传输
+- 检查保存的 `recv.h264` 文件是否完整可播放
+
+## 开发扩展
+
+### 自定义功能
+
+可以通过修改源代码来扩展功能：
+
+1. **支持其他编解码格式**: 修改JavaCV配置支持H.265等
+2. **添加录制功能**: 扩展保存格式，支持MP4等容器
+3. **网络协议扩展**: 支持UDP、RTSP等其他协议
+4. **图像处理**: 在解码后添加滤镜、缩放等处理
+
+### 依赖说明
+
+- **JavaCV**: 提供FFmpeg Java绑定，用于视频解码
+- **OpenCV**: 图像处理库（可选扩展）
+- **Swing**: GUI界面框架
+
+## 许可证
+
+本项目仅供学习和研究使用。请遵守相关的开源许可证要求。
