@@ -1,0 +1,11 @@
+com\example\H264StreamReceiver$ConnectAction.class
+com\example\VlcjExample.class
+com\example\H264StreamReceiver.class
+com\example\VlcjExample$1.class
+com\example\H264StreamReceiver$1.class
+com\example\NetworkListener$StartListenerAction.class
+com\example\H264NaluSplitter.class
+com\example\NetworkListener$1.class
+com\example\H264StreamReceiver$H264VideoRenderer.class
+com\example\H264NaluSplitter$NaluData.class
+com\example\NetworkListener.class
