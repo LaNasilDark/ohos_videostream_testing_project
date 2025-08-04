@@ -17,13 +17,6 @@
     </properties>
 
     <dependencies>
-        <!-- VLC-J依赖 -->
-        <dependency>
-            <groupId>uk.co.caprica</groupId>
-            <artifactId>vlcj</artifactId>
-            <version>4.8.2</version>
-        </dependency>
-        
         <!-- 测试依赖 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -44,6 +37,20 @@
             <groupId>org.bytedeco</groupId>
             <artifactId>opencv-platform</artifactId>
             <version>4.7.0-1.5.9</version>
+        </dependency>
+
+        <!-- WebSocket 依赖 -->
+        <dependency>
+            <groupId>org.java-websocket</groupId>
+            <artifactId>Java-WebSocket</artifactId>
+            <version>1.5.3</version>
+        </dependency>
+
+        <!-- VLC-J 依赖 -->
+        <dependency>
+            <groupId>uk.co.caprica</groupId>
+            <artifactId>vlcj</artifactId>
+            <version>4.8.2</version>
         </dependency>
     </dependencies>
 
@@ -74,7 +81,7 @@
                 </configuration>
             </plugin>
 
-            <!-- 新增：用于打包成可执行的 fat JAR -->
+            <!-- 用于打包成可执行的 fat JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -91,8 +98,8 @@
                 </configuration>
                 <executions>
                     <execution>
-                        <id>make-assembly</id> <!-- this is used for inheritance merges -->
-                        <phase>package</phase> <!-- bind to the packaging phase -->
+                        <id>make-assembly</id>
+                        <phase>package</phase>
                         <goals>
                             <goal>single</goal>
                         </goals>
