@@ -471,7 +471,7 @@ public class H264StreamReceiver {
         System.out.println("  • 客户端可连接 ws://localhost:<ws_port> 接收Base64编码的视频帧");
         System.out.println("  • 支持多个客户端同时连接");
         System.out.println("\n示例:");
-        System.out.println("  java -jar receiver.jar 192.168.1.100 8000");
+        System.out.println("  java -jar receiver.jar 192.168.5.114 8000");
         System.out.println("  java -jar receiver.jar 192.168.5.114 8000 8081");
         System.out.println("  java -Dverbose=true -jar receiver.jar 192.168.5.114 8000");
     }
