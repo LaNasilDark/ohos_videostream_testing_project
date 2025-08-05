@@ -152,30 +152,30 @@ public class H264StreamReceiver extends JFrame {
                 @Override
                 public void onOpen(WebSocket conn, ClientHandshake handshake) {
                     webSocketClients.add(conn);
-                    logMessageHeadless("WebSocket客户端连接: " + conn.getRemoteSocketAddress());
+                    logMessage("WebSocket客户端连接: " + conn.getRemoteSocketAddress());
                 }
 
                 @Override
                 public void onClose(WebSocket conn, int code, String reason, boolean remote) {
                     webSocketClients.remove(conn);
-                    logMessageHeadless("WebSocket客户端断开: " + conn.getRemoteSocketAddress() +
+                    logMessage("WebSocket客户端断开: " + conn.getRemoteSocketAddress() +
                             " (代码:" + code + ", 原因:" + reason + ")");
                 }
 
                 @Override
                 public void onMessage(WebSocket conn, String message) {
-                    logMessageHeadless("收到WebSocket消息 [" + conn.getRemoteSocketAddress() + "]: " + message);
+                    logMessage("收到WebSocket消息 [" + conn.getRemoteSocketAddress() + "]: " + message);
                 }
 
                 @Override
                 public void onError(WebSocket conn, Exception ex) {
-                    logMessageHeadless("WebSocket错误 [" + (conn != null ? conn.getRemoteSocketAddress() : "未知") + "]: "
+                    logMessage("WebSocket错误 [" + (conn != null ? conn.getRemoteSocketAddress() : "未知") + "]: "
                             + ex.getMessage());
                 }
 
                 @Override
                 public void onStart() {
-                    logMessageHeadless("WebSocket服务器启动成功,监听端口: " + DEFAULT_WS_PORT);
+                    logMessage("WebSocket服务器启动成功,监听端口: " + DEFAULT_WS_PORT);
                 }
             };
 
@@ -206,7 +206,7 @@ public class H264StreamReceiver extends JFrame {
             startTime = System.currentTimeMillis();
             lastStatsUpdate = startTime;
 
-            logMessageHeadless("成功连接到服务器 " + host + ":" + port);
+            logMessage("成功连接到服务器 " + host + ":" + port);
 
             // 启动接收线程（无需视频渲染）
             receiverThread = new Thread(this::receiveH264StreamHeadless, "H264-Receiver-Thread");
@@ -235,7 +235,7 @@ public class H264StreamReceiver extends JFrame {
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
                 int bytesRead = inputStream.read(buffer);
                 if (bytesRead == -1) {
-                    logMessageHeadless("服务器连接已关闭");
+                    logMessage("服务器连接已关闭");
                     break;
                 }
 
@@ -269,10 +269,10 @@ public class H264StreamReceiver extends JFrame {
 
         } catch (IOException e) {
             if (isConnected.get()) {
-                logMessageHeadless("接收数据时发生错误: " + e.getMessage());
+                logMessage("接收数据时发生错误: " + e.getMessage());
             }
         } finally {
-            logMessageHeadless("H.264流接收已停止");
+            logMessage("H.264流接收已停止");
             disconnectFromServer();
         }
     }
@@ -295,18 +295,10 @@ public class H264StreamReceiver extends JFrame {
 
             // 只在详细模式下显示每帧信息
             if (System.getProperty("verbose") != null) {
-                logMessageHeadless(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
+                logMessage(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
                         nalType, naluDesc, frameData.length, webSocketClients.size()));
             }
         }
-    }
-
-    /**
-     * 命令行模式下的日志输出
-     */
-    private void logMessageHeadless(String message) {
-        String timestamp = dateFormat.format(new Date());
-        System.out.println("[" + timestamp + "] " + message);
     }
 
     /**
@@ -576,18 +568,10 @@ public class H264StreamReceiver extends JFrame {
                 }
 
                 String message = "WebSocket服务器已停止";
-                if (noUiMode) {
-                    logMessageHeadless(message);
-                } else {
-                    logMessage(message);
-                }
+                logMessage(message);
             } catch (Exception ex) {
                 String errorMessage = "停止WebSocket服务器时出错: " + ex.getMessage();
-                if (noUiMode) {
-                    logMessageHeadless(errorMessage);
-                } else {
-                    logMessage(errorMessage);
-                }
+                logMessage(errorMessage);
                 ex.printStackTrace();
             }
         }
@@ -627,11 +611,7 @@ public class H264StreamReceiver extends JFrame {
                 } catch (Exception e) {
                     String errorMessage = "发送WebSocket消息失败 [" + client.getRemoteSocketAddress() + "]: "
                             + e.getMessage();
-                    if (noUiMode) {
-                        logMessageHeadless(errorMessage);
-                    } else {
-                        logMessage(errorMessage);
-                    }
+                    logMessage(errorMessage);
                     return true; // 移除出错的连接
                 }
             });
@@ -906,10 +886,8 @@ public class H264StreamReceiver extends JFrame {
         cleanupConnection();
 
         String message = "已断开服务器连接";
-        if (noUiMode) {
-            logMessageHeadless(message);
-        } else {
-            logMessage(message);
+        logMessage(message);
+        if (!noUiMode) {
             updateStatus("就绪");
         }
     }
@@ -927,11 +905,7 @@ public class H264StreamReceiver extends JFrame {
             }
         } catch (IOException e) {
             String errorMessage = "清理连接时发生错误: " + e.getMessage();
-            if (noUiMode) {
-                logMessageHeadless(errorMessage);
-            } else {
-                logMessage(errorMessage);
-            }
+            logMessage(errorMessage);
         } finally {
             // outputFileStream = null;
             clientSocket = null;
@@ -968,9 +942,12 @@ public class H264StreamReceiver extends JFrame {
     }
 
     private void logMessage(String message) {
+        String timestamp = dateFormat.format(new Date());
+        String logEntry = "[" + timestamp + "] " + message;
+
         if (noUiMode) {
             // 在无UI模式下使用控制台输出
-            logMessageHeadless(message);
+            System.out.println(logEntry);
             return;
         }
 
@@ -981,8 +958,7 @@ public class H264StreamReceiver extends JFrame {
         }
 
         SwingUtilities.invokeLater(() -> {
-            String timestamp = dateFormat.format(new Date());
-            logArea.append("[" + timestamp + "] " + message + "\n");
+            logArea.append(logEntry + "\n");
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });
     }
@@ -1087,6 +1063,7 @@ public class H264StreamReceiver extends JFrame {
 
                 if (noUi) {
                     // 命令行模式
+                    @SuppressWarnings("unused")
                     H264StreamReceiver receiver = new H264StreamReceiver(host, port, true);
                     // 保持程序运行
                     try {
