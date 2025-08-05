@@ -1032,7 +1032,7 @@ public class H264StreamReceiver extends JFrame {
         System.out.println("\n命令行模式说明:");
         System.out.println("  • 自动启动WebSocket服务器(端口8080)");
         System.out.println("  • 自动连接到指定的H.264流服务器");
-        System.out.println("  • 每5秒显示统计信息");
+        System.out.println("  • 实时显示统计信息");
         System.out.println("  • 使用 -Dverbose=true 启用详细日志");
         System.out.println("  • 按 Ctrl+C 退出程序");
         System.out.println("\nWebSocket功能:");
@@ -1040,7 +1040,7 @@ public class H264StreamReceiver extends JFrame {
         System.out.println("  • 支持多个客户端同时连接");
         System.out.println("\n示例:");
         System.out.println("  java -jar receiver.jar --noui 192.168.1.100 8000");
-        System.out.println("  java -Dverbose=true -jar receiver.jar --noui 192.168.1.100 8000");
+        System.out.println("  java -Dverbose=true -jar receiver.jar --noui 192.168.5.114 8000");
     }
 
     public static void main(String[] args) {
