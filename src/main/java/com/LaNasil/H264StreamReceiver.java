@@ -619,7 +619,7 @@ public class H264StreamReceiver extends JFrame {
                 try {
                     if (client.isOpen()) {
                         client.send(jsonMessage);
-                        logMessage(jsonMessage);
+                        // logMessage(jsonMessage);
                         return false; // 保留连接
                     } else {
                         return true; // 移除断开的连接
@@ -968,6 +968,18 @@ public class H264StreamReceiver extends JFrame {
     }
 
     private void logMessage(String message) {
+        if (noUiMode) {
+            // 在无UI模式下使用控制台输出
+            logMessageHeadless(message);
+            return;
+        }
+
+        // 确保logArea已初始化
+        if (logArea == null) {
+            System.err.println("Warning: logArea is null, message: " + message);
+            return;
+        }
+
         SwingUtilities.invokeLater(() -> {
             String timestamp = dateFormat.format(new Date());
             logArea.append("[" + timestamp + "] " + message + "\n");
