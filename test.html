@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>H.264 WebSocket 视频流</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        #video-container {
+            margin: 20px 0;
+        }
+
+        #status {
+            padding: 10px;
+            background: #f0f0f0;
+            margin: 10px 0;
+        }
+
+        #stats {
+            padding: 10px;
+            background: #e0f0ff;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>H.264 WebSocket 视频流客户端</h1>
+
+    <div id="status">状态: 未连接</div>
+    <div id="stats">帧数: 0 | 数据量: 0 KB</div>
+
+    <div>
+        <input type="text" id="wsUrl" value="ws://localhost:8080" placeholder="WebSocket URL">
+        <button onclick="connect()">连接</button>
+        <button onclick="disconnect()">断开</button>
+    </div>
+
+    <div id="video-container">
+        <canvas id="videoCanvas" width="800" height="600" style="border: 1px solid #ccc;"></canvas>
+    </div>
+
+    <script>
+        let ws = null;
+        let frameCount = 0;
+        let totalDataSize = 0;
+        let canvas = document.getElementById('videoCanvas');
+        let ctx = canvas.getContext('2d');
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+
+            ws = new WebSocket(url);
+
+            ws.onopen = function () {
+                document.getElementById('status').textContent = '状态: 已连接';
+                console.log('WebSocket 连接已建立');
+            };
+
+            ws.onmessage = function (event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'frame') {
+                        displayFrame(message);
+                        updateStats(message);
+                    }
+                } catch (e) {
+                    console.error('解析消息失败:', e);
+                }
+            };
+
+            ws.onclose = function () {
+                document.getElementById('status').textContent = '状态: 连接已关闭';
+                console.log('WebSocket 连接已关闭');
+            };
+
+            ws.onerror = function (error) {
+                document.getElementById('status').textContent = '状态: 连接错误';
+                console.error('WebSocket 错误:', error);
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function displayFrame(message) {
+            // 注意：浏览器无法直接解码H.264数据
+            // 这里只是显示帧信息，实际视频解码需要其他方案
+            frameCount++;
+
+            // 清除画布并显示帧信息
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '16px Arial';
+            ctx.fillText(`帧 #${frameCount}`, 10, 30);
+            ctx.fillText(`类型: ${message.nalDesc} (${message.nalType})`, 10, 60);
+            ctx.fillText(`大小: ${message.size} 字节`, 10, 90);
+            ctx.fillText(`时间: ${new Date(message.timestamp).toLocaleTimeString()}`, 10, 120);
+
+            // Base64数据长度
+            ctx.fillText(`Base64长度: ${message.data.length}`, 10, 150);
+        }
+
+        function updateStats(message) {
+            totalDataSize += message.size;
+            document.getElementById('stats').textContent =
+                `帧数: ${frameCount} | 数据量: ${(totalDataSize / 1024).toFixed(2)} KB`;
+        }
+    </script>
+</body>
+
+</html>

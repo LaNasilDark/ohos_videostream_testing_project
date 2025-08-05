@@ -32,7 +32,7 @@ public class H264StreamReceiver extends JFrame {
 
     private static final String DEFAULT_HOST = "192.168.5.114";
     private static final int DEFAULT_PORT = 8000;
-    private static final String OUTPUT_FILE = "recv.h264";
+    // private static final String OUTPUT_FILE = "recv.h264";
     private static final int DEFAULT_WS_PORT = 8080;
 
     // UI组件
@@ -58,7 +58,7 @@ public class H264StreamReceiver extends JFrame {
     private Socket clientSocket;
     private final AtomicBoolean isConnected = new AtomicBoolean(false);
     private Thread receiverThread;
-    private FileOutputStream outputFileStream;
+    // private FileOutputStream outputFileStream;
 
     // WebSocket 相关
     private WebSocketServer webSocketServer;
@@ -197,7 +197,7 @@ public class H264StreamReceiver extends JFrame {
         }
 
         try {
-            outputFileStream = new FileOutputStream(OUTPUT_FILE);
+            // outputFileStream = new FileOutputStream(OUTPUT_FILE);
             clientSocket = new Socket();
             clientSocket.connect(new InetSocketAddress(host, port), 5000);
             isConnected.set(true);
@@ -281,6 +281,7 @@ public class H264StreamReceiver extends JFrame {
      * 命令行模式下处理帧数据
      */
     private void processFrameHeadless(byte[] frameData) {
+
         String base64Frame = Base64.getEncoder().encodeToString(frameData);
 
         int startCodeLen = getStartCodeLength(frameData, 0);
@@ -618,6 +619,7 @@ public class H264StreamReceiver extends JFrame {
                 try {
                     if (client.isOpen()) {
                         client.send(jsonMessage);
+                        logMessage(jsonMessage);
                         return false; // 保留连接
                     } else {
                         return true; // 移除断开的连接
@@ -687,7 +689,7 @@ public class H264StreamReceiver extends JFrame {
         }
 
         try {
-            outputFileStream = new FileOutputStream(OUTPUT_FILE);
+            // outputFileStream = new FileOutputStream(OUTPUT_FILE);
             clientSocket = new Socket();
             clientSocket.connect(new InetSocketAddress(host, port), 5000); // 5秒超时
             isConnected.set(true);
@@ -917,9 +919,9 @@ public class H264StreamReceiver extends JFrame {
      */
     private void cleanupConnection() {
         try {
-            if (outputFileStream != null) {
-                outputFileStream.close();
-            }
+            // if (outputFileStream != null) {
+            // outputFileStream.close();
+            // }
             if (clientSocket != null && !clientSocket.isClosed()) {
                 clientSocket.close();
             }
@@ -931,7 +933,7 @@ public class H264StreamReceiver extends JFrame {
                 logMessage(errorMessage);
             }
         } finally {
-            outputFileStream = null;
+            // outputFileStream = null;
             clientSocket = null;
         }
 
