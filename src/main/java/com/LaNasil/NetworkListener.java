@@ -1,4 +1,4 @@
-package com.example;
+package com.LaNasil;
 
 import javax.swing.*;
 import java.awt.*;

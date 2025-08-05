@@ -5,8 +5,8 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.example</groupId>
-    <artifactId>udp-h264</artifactId>
+    <groupId>com.LaNasil</groupId>
+    <artifactId>ohos_videostream_testing_project</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
@@ -77,7 +77,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>com.example.H264StreamReceiver</mainClass>
+                    <mainClass>com.LaNasil.H264StreamReceiver</mainClass>
                 </configuration>
             </plugin>
 
@@ -89,7 +89,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.example.H264StreamReceiver</mainClass>
+                            <mainClass>com.LaNasil.H264StreamReceiver</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

@@ -1,4 +1,4 @@
-package com.example;
+package com.LaNasil;
 
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Java2DFrameConverter;
@@ -175,7 +175,7 @@ public class H264StreamReceiver extends JFrame {
 
                 @Override
                 public void onStart() {
-                    logMessageHeadless("WebSocket服务器启动成功，监听端口: " + DEFAULT_WS_PORT);
+                    logMessageHeadless("WebSocket服务器启动成功,监听端口: " + DEFAULT_WS_PORT);
                 }
             };
 
@@ -538,7 +538,7 @@ public class H264StreamReceiver extends JFrame {
 
                 @Override
                 public void onStart() {
-                    logMessage("WebSocket服务器启动成功，监听端口: " + wsPort);
+                    logMessage("WebSocket服务器启动成功,监听端口: " + wsPort);
                     SwingUtilities.invokeLater(() -> {
                         wsButton.setText("停止WS服务");
                         wsPortField.setEnabled(false);
@@ -636,7 +636,7 @@ public class H264StreamReceiver extends JFrame {
                 }
             });
 
-            // 如果客户端数量发生变化，更新显示
+            // 如果客户端数量发生变化,更新显示
             updateWebSocketClientCount();
         }
     }
@@ -739,7 +739,7 @@ public class H264StreamReceiver extends JFrame {
                     // 查找起始码 0x00 0x00 0x00 0x01
                     if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
                         if (inFrame) {
-                            // 发现新帧的起始，处理已缓冲的旧帧
+                            // 发现新帧的起始,处理已缓冲的旧帧
                             byte[] frameData = frameBuffer.toByteArray();
                             if (frameData.length > 0) {
                                 renderFrame(frameData);
@@ -1012,13 +1012,13 @@ public class H264StreamReceiver extends JFrame {
         System.out.println("使用方法:");
         System.out.println("  java -jar <jarfile>                           - 正常启动GUI界面");
         System.out.println("  java -jar <jarfile> <ip> <port>               - 使用指定IP和端口启动GUI并自动连接");
-        System.out.println("  java -jar <jarfile> --noui <ip> <port>        - 命令行模式，无GUI界面");
+        System.out.println("  java -jar <jarfile> --noui <ip> <port>        - 命令行模式,无GUI界面");
         System.out.println("\n参数说明:");
         System.out.println("  ip     - 服务器IP地址 (例如: 192.168.1.100)");
         System.out.println("  port   - 服务器端口号 (1-65535)");
-        System.out.println("  --noui - 启用命令行模式，不显示GUI界面");
+        System.out.println("  --noui - 启用命令行模式,不显示GUI界面");
         System.out.println("\n命令行模式说明:");
-        System.out.println("  • 自动启动WebSocket服务器（端口8080）");
+        System.out.println("  • 自动启动WebSocket服务器(端口8080)");
         System.out.println("  • 自动连接到指定的H.264流服务器");
         System.out.println("  • 每5秒显示统计信息");
         System.out.println("  • 使用 -Dverbose=true 启用详细日志");
@@ -1044,7 +1044,7 @@ public class H264StreamReceiver extends JFrame {
         for (int i = 0; i < args.length; i++) {
             if ("--noui".equals(args[i])) {
                 noUi = true;
-                // 移除 --noui 参数，创建新的参数数组
+                // 移除 --noui 参数,创建新的参数数组
                 filteredArgs = new String[args.length - 1];
                 int j = 0;
                 for (int k = 0; k < args.length; k++) {
@@ -1098,7 +1098,7 @@ public class H264StreamReceiver extends JFrame {
 
     /**
      * H.264 视频渲染器 (使用JavaCV实现) - 优化版
-     * 该版本使用单个解码器实例和专用解码线程，以提高性能。
+     * 该版本使用单个解码器实例和专用解码线程,以提高性能。
      */
     private static class H264VideoRenderer extends JPanel implements Runnable {
 

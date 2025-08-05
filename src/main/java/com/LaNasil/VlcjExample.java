@@ -1,4 +1,4 @@
-package com.example;
+package com.LaNasil;
 
 import uk.co.caprica.vlcj.factory.MediaPlayerFactory;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
