@@ -1,16 +1,9 @@
 package com.LaNasil;
 
-import org.bytedeco.javacv.FFmpegFrameGrabber;
-import org.bytedeco.javacv.Java2DFrameConverter;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -23,47 +16,22 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.Base64;
 
 /**
- * H.264 流接收器
+ * H.264 流接收器 (命令行版本)
  * 从指定主机接收并处理H.264视频流数据
- * 支持命令行参数自动连接和无UI模式
- * 包含实时视频渲染功能和WebSocket流传输
+ * 支持WebSocket流传输
  */
-public class H264StreamReceiver extends JFrame {
+public class H264StreamReceiver {
 
-    private static final String DEFAULT_HOST = "192.168.5.114";
-    private static final int DEFAULT_PORT = 8000;
-    // private static final String OUTPUT_FILE = "recv.h264";
     private static final int DEFAULT_WS_PORT = 8080;
-
-    // UI组件
-    private JTextArea logArea;
-    private JButton connectButton;
-    private JButton disconnectButton;
-    private JButton clearButton;
-    private JButton videoButton;
-    private JButton wsButton;
-    private JLabel statusLabel;
-    private JTextField hostField;
-    private JTextField portField;
-    private JTextField wsPortField;
-    private JLabel fpsLabel;
-    private JLabel dataRateLabel;
-    private JLabel wsClientLabel;
-
-    // 视频渲染组件
-    private H264VideoRenderer videoRenderer;
-    private JFrame videoWindow;
 
     // 网络和线程
     private Socket clientSocket;
     private final AtomicBoolean isConnected = new AtomicBoolean(false);
     private Thread receiverThread;
-    // private FileOutputStream outputFileStream;
 
     // WebSocket 相关
     private WebSocketServer webSocketServer;
     private final Set<WebSocket> webSocketClients = new CopyOnWriteArraySet<>();
-    private boolean wsServerRunning = false;
 
     // 统计跟踪
     private final AtomicLong totalBytesReceived = new AtomicLong(0);
@@ -72,59 +40,25 @@ public class H264StreamReceiver extends JFrame {
     private long lastStatsUpdate;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 
-    // 自动连接参数
-    private String autoConnectHost;
-    private int autoConnectPort;
-    private boolean shouldAutoConnect;
-    private boolean noUiMode = false;
+    // 连接参数
+    private int wsPort;
 
     /**
-     * 构造函数 - 初始化GUI界面
-     */
-    public H264StreamReceiver() {
-        initializeGui();
-    }
-
-    /**
-     * 带自动连接参数的构造函数
-     *
-     * @param host 自动连接的主机
-     * @param port 自动连接的端口
+     * 构造函数
      */
     public H264StreamReceiver(String host, int port) {
-        this.autoConnectHost = host;
-        this.autoConnectPort = port;
-        this.shouldAutoConnect = true;
-        initializeGui();
+        this(host, port, DEFAULT_WS_PORT);
     }
 
     /**
-     * 带命令行模式参数的构造函数
-     *
-     * @param host 自动连接的主机
-     * @param port 自动连接的端口
-     * @param noUi 是否为无UI模式
+     * 带WebSocket端口的构造函数
      */
-    public H264StreamReceiver(String host, int port, boolean noUi) {
-        this.autoConnectHost = host;
-        this.autoConnectPort = port;
-        this.shouldAutoConnect = true;
-        this.noUiMode = noUi;
+    public H264StreamReceiver(String host, int port, int wsPort) {
+        this.wsPort = wsPort;
 
-        if (!noUi) {
-            initializeGui();
-        } else {
-            initializeHeadless();
-        }
-    }
-
-    /**
-     * 初始化无头模式（命令行模式）
-     */
-    private void initializeHeadless() {
-        System.out.println("=== H.264 视频流接收器 (命令行模式) ===");
-        System.out.println("目标服务器: " + autoConnectHost + ":" + autoConnectPort);
-        System.out.println("WebSocket端口: " + DEFAULT_WS_PORT);
+        System.out.println("=== H.264 视频流接收器 (命令行版本) ===");
+        System.out.println("目标服务器: " + host + ":" + port);
+        System.out.println("WebSocket端口: " + wsPort);
         System.out.println("按 Ctrl+C 退出程序");
         System.out.println("=====================================");
 
@@ -137,18 +71,18 @@ public class H264StreamReceiver extends JFrame {
         }));
 
         // 自动启动WebSocket服务器
-        startWebSocketServerHeadless();
+        startWebSocketServer();
 
         // 自动连接到H.264流服务器
-        connectToServerHeadless(autoConnectHost, autoConnectPort);
+        connectToServer(host, port);
     }
 
     /**
-     * 命令行模式下启动WebSocket服务器
+     * 启动WebSocket服务器
      */
-    private void startWebSocketServerHeadless() {
+    private void startWebSocketServer() {
         try {
-            webSocketServer = new WebSocketServer(new InetSocketAddress(DEFAULT_WS_PORT)) {
+            webSocketServer = new WebSocketServer(new InetSocketAddress(wsPort)) {
                 @Override
                 public void onOpen(WebSocket conn, ClientHandshake handshake) {
                     webSocketClients.add(conn);
@@ -175,12 +109,11 @@ public class H264StreamReceiver extends JFrame {
 
                 @Override
                 public void onStart() {
-                    logMessage("WebSocket服务器启动成功,监听端口: " + DEFAULT_WS_PORT);
+                    logMessage("WebSocket服务器启动成功,监听端口: " + wsPort);
                 }
             };
 
             webSocketServer.start();
-            wsServerRunning = true;
 
         } catch (Exception ex) {
             System.err.println("启动WebSocket服务器失败: " + ex.getMessage());
@@ -189,15 +122,14 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 命令行模式下连接到H.264流服务器
+     * 连接到H.264流服务器
      */
-    private void connectToServerHeadless(String host, int port) {
+    private void connectToServer(String host, int port) {
         if (isConnected.get()) {
             return;
         }
 
         try {
-            // outputFileStream = new FileOutputStream(OUTPUT_FILE);
             clientSocket = new Socket();
             clientSocket.connect(new InetSocketAddress(host, port), 5000);
             isConnected.set(true);
@@ -212,8 +144,8 @@ public class H264StreamReceiver extends JFrame {
             System.out.println(); // 为统计信息预留一行
             printStats();
 
-            // 启动接收线程（无需视频渲染）
-            receiverThread = new Thread(this::receiveH264StreamHeadless, "H264-Receiver-Thread");
+            // 启动接收线程
+            receiverThread = new Thread(this::receiveH264Stream, "H264-Receiver-Thread");
             receiverThread.start();
 
             // 启动统计显示线程
@@ -228,9 +160,9 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 命令行模式下接收H.264流数据
+     * 接收H.264流数据
      */
-    private void receiveH264StreamHeadless() {
+    private void receiveH264Stream() {
         try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
             byte[] buffer = new byte[8192];
             ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
@@ -248,7 +180,7 @@ public class H264StreamReceiver extends JFrame {
                         if (inFrame) {
                             byte[] frameData = frameBuffer.toByteArray();
                             if (frameData.length > 0) {
-                                processFrameHeadless(frameData);
+                                processFrame(frameData);
                                 frameCount.incrementAndGet();
                             }
                             frameBuffer.reset();
@@ -261,7 +193,6 @@ public class H264StreamReceiver extends JFrame {
                     frameBuffer.write(buffer, 0, bytesRead);
                 }
 
-                // outputFileStream.write(buffer, 0, bytesRead);
                 updateStatistics(bytesRead);
 
                 // 实时更新统计显示
@@ -274,7 +205,7 @@ public class H264StreamReceiver extends JFrame {
 
             // 处理最后一帧
             if (inFrame && frameBuffer.size() > 0) {
-                processFrameHeadless(frameBuffer.toByteArray());
+                processFrame(frameBuffer.toByteArray());
                 frameCount.incrementAndGet();
             }
 
@@ -289,10 +220,9 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 命令行模式下处理帧数据
+     * 处理帧数据
      */
-    private void processFrameHeadless(byte[] frameData) {
-
+    private void processFrame(byte[] frameData) {
         String base64Frame = Base64.getEncoder().encodeToString(frameData);
 
         int startCodeLen = getStartCodeLength(frameData, 0);
@@ -356,224 +286,6 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 初始化图形用户界面
-     */
-    private void initializeGui() {
-        setTitle("H.264 视频流接收器 (支持WebSocket)");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
-
-        // 创建控制面板
-        JPanel controlPanel = createControlPanel();
-
-        // 创建统计面板
-        JPanel statsPanel = createStatsPanel();
-
-        // 创建日志显示区域
-        logArea = new JTextArea(20, 60);
-        logArea.setEditable(false);
-        logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-
-        // 状态标签
-        statusLabel = new JLabel("就绪");
-        statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-
-        // 创建视频窗口
-        createVideoWindow();
-
-        // 布局
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.add(controlPanel, BorderLayout.NORTH);
-        topPanel.add(statsPanel, BorderLayout.SOUTH);
-
-        add(topPanel, BorderLayout.NORTH);
-        add(scrollPane, BorderLayout.CENTER);
-        add(statusLabel, BorderLayout.SOUTH);
-
-        pack();
-        setLocationRelativeTo(null);
-
-        // 添加窗口关闭事件处理
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                disconnectFromServer();
-                stopWebSocketServer();
-                disposeVideoResources();
-                System.exit(0);
-            }
-        });
-
-        // 如果提供了参数则自动连接
-        if (shouldAutoConnect) {
-            SwingUtilities.invokeLater(() -> {
-                hostField.setText(autoConnectHost);
-                portField.setText(String.valueOf(autoConnectPort));
-                logMessage("使用命令行参数自动连接到: " + autoConnectHost + ":" + autoConnectPort);
-                connectToServer(autoConnectHost, autoConnectPort);
-            });
-        }
-    }
-
-    /**
-     * 创建视频显示窗口
-     */
-    private void createVideoWindow() {
-        videoWindow = new JFrame("H.264 视频播放");
-        videoRenderer = new H264VideoRenderer();
-
-        videoWindow.add(videoRenderer);
-        videoWindow.setSize(800, 600);
-        videoWindow.setLocationRelativeTo(this);
-        videoWindow.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-    }
-
-    /**
-     * 创建包含连接控件的控制面板
-     *
-     * @return 包含控制按钮和输入字段的面板
-     */
-    private JPanel createControlPanel() {
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-
-        // H.264 连接控制面板
-        JPanel h264Panel = new JPanel(new FlowLayout());
-        h264Panel.setBorder(BorderFactory.createTitledBorder("H.264流连接"));
-
-        h264Panel.add(new JLabel("服务器地址:"));
-        hostField = new JTextField(shouldAutoConnect ? autoConnectHost : DEFAULT_HOST, 15);
-        h264Panel.add(hostField);
-
-        h264Panel.add(new JLabel("端口:"));
-        portField = new JTextField(String.valueOf(shouldAutoConnect ? autoConnectPort : DEFAULT_PORT), 8);
-        h264Panel.add(portField);
-
-        connectButton = new JButton("连接");
-        connectButton.addActionListener(new ConnectAction());
-        h264Panel.add(connectButton);
-
-        disconnectButton = new JButton("断开连接");
-        disconnectButton.setEnabled(false);
-        disconnectButton.addActionListener(e -> disconnectFromServer());
-        h264Panel.add(disconnectButton);
-
-        videoButton = new JButton("显示视频");
-        videoButton.addActionListener(e -> toggleVideoWindow());
-        h264Panel.add(videoButton);
-
-        clearButton = new JButton("清空日志");
-        clearButton.addActionListener(e -> {
-            logArea.setText("");
-            resetStatistics();
-        });
-        h264Panel.add(clearButton);
-
-        // WebSocket 控制面板
-        JPanel wsPanel = new JPanel(new FlowLayout());
-        wsPanel.setBorder(BorderFactory.createTitledBorder("WebSocket服务"));
-
-        wsPanel.add(new JLabel("WebSocket端口:"));
-        wsPortField = new JTextField(String.valueOf(DEFAULT_WS_PORT), 6);
-        wsPanel.add(wsPortField);
-
-        wsButton = new JButton("启动WS服务");
-        wsButton.addActionListener(e -> toggleWebSocketServer());
-        wsPanel.add(wsButton);
-
-        wsClientLabel = new JLabel("客户端: 0");
-        wsPanel.add(wsClientLabel);
-
-        panel.add(h264Panel);
-        panel.add(wsPanel);
-
-        return panel;
-    }
-
-    /**
-     * 切换视频窗口可见性
-     */
-    private void toggleVideoWindow() {
-        if (videoWindow.isVisible()) {
-            videoWindow.setVisible(false);
-            videoButton.setText("显示视频");
-        } else {
-            videoWindow.setVisible(true);
-            videoButton.setText("隐藏视频");
-        }
-    }
-
-    /**
-     * 切换 WebSocket 服务器状态
-     */
-    private void toggleWebSocketServer() {
-        if (!wsServerRunning) {
-            startWebSocketServer();
-        } else {
-            stopWebSocketServer();
-        }
-    }
-
-    /**
-     * 启动 WebSocket 服务器
-     */
-    private void startWebSocketServer() {
-        try {
-            int wsPort = Integer.parseInt(wsPortField.getText().trim());
-
-            webSocketServer = new WebSocketServer(new InetSocketAddress(wsPort)) {
-                @Override
-                public void onOpen(WebSocket conn, ClientHandshake handshake) {
-                    webSocketClients.add(conn);
-                    logMessage("WebSocket客户端连接: " + conn.getRemoteSocketAddress());
-                    updateWebSocketClientCount();
-                }
-
-                @Override
-                public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                    webSocketClients.remove(conn);
-                    logMessage("WebSocket客户端断开: " + conn.getRemoteSocketAddress() +
-                            " (代码:" + code + ", 原因:" + reason + ")");
-                    updateWebSocketClientCount();
-                }
-
-                @Override
-                public void onMessage(WebSocket conn, String message) {
-                    // 处理客户端消息（如果需要）
-                    logMessage("收到WebSocket消息 [" + conn.getRemoteSocketAddress() + "]: " + message);
-                }
-
-                @Override
-                public void onError(WebSocket conn, Exception ex) {
-                    logMessage("WebSocket错误 [" + (conn != null ? conn.getRemoteSocketAddress() : "未知") + "]: "
-                            + ex.getMessage());
-                    ex.printStackTrace();
-                }
-
-                @Override
-                public void onStart() {
-                    logMessage("WebSocket服务器启动成功,监听端口: " + wsPort);
-                    SwingUtilities.invokeLater(() -> {
-                        wsButton.setText("停止WS服务");
-                        wsPortField.setEnabled(false);
-                    });
-                }
-            };
-
-            webSocketServer.start();
-            wsServerRunning = true;
-
-        } catch (NumberFormatException ex) {
-            showError("WebSocket端口号必须是有效数字");
-        } catch (Exception ex) {
-            showError("启动WebSocket服务器失败: " + ex.getMessage());
-            ex.printStackTrace();
-        }
-    }
-
-    /**
      * 停止 WebSocket 服务器
      */
     private void stopWebSocketServer() {
@@ -581,15 +293,6 @@ public class H264StreamReceiver extends JFrame {
             try {
                 webSocketServer.stop(1000);
                 webSocketClients.clear();
-                wsServerRunning = false;
-
-                if (!noUiMode) {
-                    SwingUtilities.invokeLater(() -> {
-                        wsButton.setText("启动WS服务");
-                        wsPortField.setEnabled(true);
-                        updateWebSocketClientCount();
-                    });
-                }
 
                 String message = "WebSocket服务器已停止";
                 logMessage(message);
@@ -598,17 +301,6 @@ public class H264StreamReceiver extends JFrame {
                 logMessage(errorMessage);
                 ex.printStackTrace();
             }
-        }
-    }
-
-    /**
-     * 更新WebSocket客户端数量显示
-     */
-    private void updateWebSocketClientCount() {
-        if (!noUiMode) {
-            SwingUtilities.invokeLater(() -> {
-                wsClientLabel.setText("客户端: " + webSocketClients.size());
-            });
         }
     }
 
@@ -627,7 +319,6 @@ public class H264StreamReceiver extends JFrame {
                 try {
                     if (client.isOpen()) {
                         client.send(jsonMessage);
-                        // logMessage(jsonMessage);
                         return false; // 保留连接
                     } else {
                         return true; // 移除断开的连接
@@ -639,177 +330,6 @@ public class H264StreamReceiver extends JFrame {
                     return true; // 移除出错的连接
                 }
             });
-
-            // 如果客户端数量发生变化,更新显示
-            updateWebSocketClientCount();
-        }
-    }
-
-    /**
-     * 创建统计显示面板
-     *
-     * @return 包含统计标签的面板
-     */
-    private JPanel createStatsPanel() {
-        JPanel panel = new JPanel(new FlowLayout());
-
-        fpsLabel = new JLabel("帧率: 0.0 fps");
-        dataRateLabel = new JLabel("数据率: 0.0 KB/s");
-
-        panel.add(fpsLabel);
-        panel.add(Box.createHorizontalStrut(20));
-        panel.add(dataRateLabel);
-
-        return panel;
-    }
-
-    /**
-     * 连接按钮的动作处理
-     */
-    private class ConnectAction implements ActionListener {
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            try {
-                String host = hostField.getText().trim();
-                int port = Integer.parseInt(portField.getText().trim());
-                connectToServer(host, port);
-            } catch (NumberFormatException ex) {
-                showError("端口号必须是有效的数字");
-            } catch (Exception ex) {
-                showError("连接失败: " + ex.getMessage());
-            }
-        }
-    }
-
-    /**
-     * 连接到H.264流服务器
-     *
-     * @param host 服务器主机地址
-     * @param port 服务器端口号
-     */
-    private void connectToServer(String host, int port) {
-        if (isConnected.get()) {
-            return;
-        }
-
-        try {
-            // outputFileStream = new FileOutputStream(OUTPUT_FILE);
-            clientSocket = new Socket();
-            clientSocket.connect(new InetSocketAddress(host, port), 5000); // 5秒超时
-            isConnected.set(true);
-
-            SwingUtilities.invokeLater(() -> {
-                connectButton.setEnabled(false);
-                disconnectButton.setEnabled(true);
-                hostField.setEnabled(false);
-                portField.setEnabled(false);
-            });
-
-            resetStatistics();
-            startTime = System.currentTimeMillis();
-            lastStatsUpdate = startTime;
-
-            logMessage("成功连接到服务器 " + host + ":" + port);
-            updateStatus("已连接 - 接收数据中");
-
-            // 启动接收线程和解码器线程
-            receiverThread = new Thread(this::receiveH264Stream, "H264-Receiver-Thread");
-            receiverThread.start();
-            videoRenderer.start();
-
-        } catch (IOException e) {
-            showError("无法连接到服务器 " + host + ":" + port + " - " + e.getMessage());
-            cleanupConnection();
-        }
-    }
-
-    /**
-     * 接收H.264流数据的主方法
-     */
-    private void receiveH264Stream() {
-        try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
-            byte[] buffer = new byte[8192];
-            ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
-            boolean inFrame = false;
-
-            while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
-                int bytesRead = inputStream.read(buffer);
-                if (bytesRead == -1) {
-                    logMessage("服务器连接已关闭");
-                    break;
-                }
-
-                for (int i = 0; i < bytesRead - 3; i++) {
-                    // 查找起始码 0x00 0x00 0x00 0x01
-                    if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
-                        if (inFrame) {
-                            // 发现新帧的起始,处理已缓冲的旧帧
-                            byte[] frameData = frameBuffer.toByteArray();
-                            if (frameData.length > 0) {
-                                renderFrame(frameData);
-                                frameCount.incrementAndGet();
-                            }
-                            frameBuffer.reset();
-                        }
-                        inFrame = true;
-                    }
-                }
-
-                if (inFrame) {
-                    frameBuffer.write(buffer, 0, bytesRead);
-                }
-
-                // outputFileStream.write(buffer, 0, bytesRead);
-                updateStatistics(bytesRead);
-
-                long currentTime = System.currentTimeMillis();
-                if (currentTime - lastStatsUpdate >= 1000) {
-                    updateStatsDisplay();
-                    lastStatsUpdate = currentTime;
-                }
-            }
-
-            // 处理最后一帧
-            if (inFrame && frameBuffer.size() > 0) {
-                renderFrame(frameBuffer.toByteArray());
-                frameCount.incrementAndGet();
-            }
-
-        } catch (IOException e) {
-            if (isConnected.get()) {
-                logMessage("接收数据时发生错误: " + e.getMessage());
-            }
-        } finally {
-            SwingUtilities.invokeLater(() -> {
-                disconnectFromServer();
-                logMessage("H.264流接收已停止");
-            });
-        }
-    }
-
-    /**
-     * 渲染接收到的H.264帧
-     *
-     * @param frameData 完整的帧数据
-     */
-    private void renderFrame(byte[] frameData) {
-        String base64Frame = Base64.getEncoder().encodeToString(frameData);
-
-        if (videoRenderer != null) {
-            videoRenderer.renderFrame(frameData);
-        }
-
-        int startCodeLen = getStartCodeLength(frameData, 0);
-        if (frameData.length > startCodeLen) {
-            byte nalHeader = frameData[startCodeLen];
-            int nalType = nalHeader & 0x1F;
-            String naluDesc = getNaluTypeDescription(nalType);
-
-            // 发送到WebSocket客户端
-            broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
-
-            logMessage(String.format("渲染帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
-                    nalType, naluDesc, frameData.length, webSocketClients.size()));
         }
     }
 
@@ -864,32 +384,11 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 在UI中更新统计显示
-     */
-    private void updateStatsDisplay() {
-        SwingUtilities.invokeLater(() -> {
-            long elapsedTime = System.currentTimeMillis() - startTime;
-            if (elapsedTime > 0) {
-                double fps = (frameCount.get() * 1000.0) / elapsedTime;
-                double dataRateKBps = (totalBytesReceived.get() * 1000.0) / (elapsedTime * 1024.0);
-                fpsLabel.setText(String.format("帧率: %.2f fps", fps));
-                dataRateLabel.setText(String.format("数据率: %.2f KB/s", dataRateKBps));
-            }
-        });
-    }
-
-    /**
      * 重置所有统计计数器
      */
     private void resetStatistics() {
         totalBytesReceived.set(0);
         frameCount.set(0);
-        if (!noUiMode) {
-            SwingUtilities.invokeLater(() -> {
-                fpsLabel.setText("帧率: 0.0 fps");
-                dataRateLabel.setText("数据率: 0.0 KB/s");
-            });
-        }
     }
 
     /**
@@ -903,17 +402,11 @@ public class H264StreamReceiver extends JFrame {
         if (receiverThread != null) {
             receiverThread.interrupt();
         }
-        if (videoRenderer != null) {
-            videoRenderer.stop();
-        }
 
         cleanupConnection();
 
         String message = "已断开服务器连接";
         logMessage(message);
-        if (!noUiMode) {
-            updateStatus("就绪");
-        }
     }
 
     /**
@@ -921,9 +414,6 @@ public class H264StreamReceiver extends JFrame {
      */
     private void cleanupConnection() {
         try {
-            // if (outputFileStream != null) {
-            // outputFileStream.close();
-            // }
             if (clientSocket != null && !clientSocket.isClosed()) {
                 clientSocket.close();
             }
@@ -931,71 +421,14 @@ public class H264StreamReceiver extends JFrame {
             String errorMessage = "清理连接时发生错误: " + e.getMessage();
             logMessage(errorMessage);
         } finally {
-            // outputFileStream = null;
             clientSocket = null;
         }
-
-        if (!noUiMode) {
-            SwingUtilities.invokeLater(() -> {
-                connectButton.setEnabled(true);
-                disconnectButton.setEnabled(false);
-                hostField.setEnabled(true);
-                portField.setEnabled(true);
-            });
-        }
-    }
-
-    /**
-     * 释放视频渲染资源
-     */
-    private void disposeVideoResources() {
-        if (videoRenderer != null) {
-            videoRenderer.dispose();
-        }
-        if (videoWindow != null) {
-            videoWindow.dispose();
-        }
-    }
-
-    @Override
-    public void dispose() {
-        disconnectFromServer();
-        stopWebSocketServer();
-        disposeVideoResources();
-        super.dispose();
     }
 
     private void logMessage(String message) {
         String timestamp = dateFormat.format(new Date());
         String logEntry = "[" + timestamp + "] " + message;
-
-        if (noUiMode) {
-            // 在无UI模式下使用控制台输出
-            System.out.println(logEntry);
-            return;
-        }
-
-        // 确保logArea已初始化
-        if (logArea == null) {
-            System.err.println("Warning: logArea is null, message: " + message);
-            return;
-        }
-
-        SwingUtilities.invokeLater(() -> {
-            logArea.append(logEntry + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
-        });
-    }
-
-    private void updateStatus(String status) {
-        SwingUtilities.invokeLater(() -> statusLabel.setText(status));
-    }
-
-    private void showError(String message) {
-        SwingUtilities.invokeLater(() -> {
-            JOptionPane.showMessageDialog(this, message, "错误", JOptionPane.ERROR_MESSAGE);
-            logMessage("错误: " + message);
-        });
+        System.out.println(logEntry);
     }
 
     private static boolean isValidIpAddress(String ip) {
@@ -1022,223 +455,64 @@ public class H264StreamReceiver extends JFrame {
 
     private static void printUsage() {
         System.out.println("使用方法:");
-        System.out.println("  java -jar <jarfile>                           - 正常启动GUI界面");
-        System.out.println("  java -jar <jarfile> <ip> <port>               - 使用指定IP和端口启动GUI并自动连接");
-        System.out.println("  java -jar <jarfile> --noui <ip> <port>        - 命令行模式,无GUI界面");
+        System.out.println("  java -jar <jarfile> <ip> <port>               - 命令行模式");
+        System.out.println("  java -jar <jarfile> <ip> <port> <ws_port>     - 指定WebSocket端口");
         System.out.println("\n参数说明:");
-        System.out.println("  ip     - 服务器IP地址 (例如: 192.168.1.100)");
-        System.out.println("  port   - 服务器端口号 (1-65535)");
-        System.out.println("  --noui - 启用命令行模式,不显示GUI界面");
-        System.out.println("\n命令行模式说明:");
-        System.out.println("  • 自动启动WebSocket服务器(端口8080)");
+        System.out.println("  ip       - 服务器IP地址 (例如: 192.168.1.100)");
+        System.out.println("  port     - 服务器端口号 (1-65535)");
+        System.out.println("  ws_port  - WebSocket端口号 (可选，默认8080)");
+        System.out.println("\n功能说明:");
+        System.out.println("  • 自动启动WebSocket服务器");
         System.out.println("  • 自动连接到指定的H.264流服务器");
         System.out.println("  • 实时显示统计信息");
         System.out.println("  • 使用 -Dverbose=true 启用详细日志");
         System.out.println("  • 按 Ctrl+C 退出程序");
         System.out.println("\nWebSocket功能:");
-        System.out.println("  • 客户端可连接 ws://localhost:8080 接收Base64编码的视频帧");
+        System.out.println("  • 客户端可连接 ws://localhost:<ws_port> 接收Base64编码的视频帧");
         System.out.println("  • 支持多个客户端同时连接");
         System.out.println("\n示例:");
-        System.out.println("  java -jar receiver.jar --noui 192.168.1.100 8000");
-        System.out.println("  java -Dverbose=true -jar receiver.jar --noui 192.168.5.114 8000");
+        System.out.println("  java -jar receiver.jar 192.168.1.100 8000");
+        System.out.println("  java -jar receiver.jar 192.168.5.114 8000 8081");
+        System.out.println("  java -Dverbose=true -jar receiver.jar 192.168.5.114 8000");
     }
 
     public static void main(String[] args) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        // 检查是否包含 --noui 参数
-        boolean noUi = false;
-        String[] filteredArgs = args;
-        for (int i = 0; i < args.length; i++) {
-            if ("--noui".equals(args[i])) {
-                noUi = true;
-                // 移除 --noui 参数,创建新的参数数组
-                filteredArgs = new String[args.length - 1];
-                int j = 0;
-                for (int k = 0; k < args.length; k++) {
-                    if (k != i) {
-                        filteredArgs[j++] = args[k];
-                    }
-                }
-                break;
-            }
-        }
-
-        if (filteredArgs.length == 0) {
-            if (noUi) {
-                System.err.println("错误: --noui 参数需要同时指定服务器地址和端口");
-                printUsage();
-                return;
-            }
-            SwingUtilities.invokeLater(() -> new H264StreamReceiver().setVisible(true));
-        } else if (filteredArgs.length == 2) {
-            String host = filteredArgs[0].trim();
-            try {
-                int port = Integer.parseInt(filteredArgs[1].trim());
-                if (!isValidIpAddress(host) || !isValidPort(port)) {
-                    System.err.println("错误: 无效的IP地址或端口号。");
-                    printUsage();
-                    return;
-                }
-
-                if (noUi) {
-                    // 命令行模式
-                    @SuppressWarnings("unused")
-                    H264StreamReceiver receiver = new H264StreamReceiver(host, port, true);
-                    // 保持程序运行
-                    try {
-                        Thread.currentThread().join();
-                    } catch (InterruptedException e) {
-                        System.out.println("\n程序被中断");
-                    }
-                } else {
-                    // GUI模式
-                    SwingUtilities.invokeLater(() -> new H264StreamReceiver(host, port).setVisible(true));
-                }
-            } catch (NumberFormatException e) {
-                System.err.println("错误: 端口号必须是数字。");
-                printUsage();
-            }
-        } else {
+        if (args.length < 2 || args.length > 3) {
             System.err.println("错误: 参数数量不正确。");
             printUsage();
-        }
-    }
-
-    /**
-     * H.264 视频渲染器 (使用JavaCV实现) - 优化版
-     * 该版本使用单个解码器实例和专用解码线程,以提高性能。
-     */
-    private static class H264VideoRenderer extends JPanel implements Runnable {
-
-        private BufferedImage currentFrame;
-        private long frameCounter = 0;
-        private final Java2DFrameConverter converter = new Java2DFrameConverter();
-        private final PipedOutputStream dataOutputStream;
-        private final PipedInputStream dataInputStream;
-        private volatile boolean running = false;
-        private Thread decoderThread;
-
-        public H264VideoRenderer() {
-            setPreferredSize(new Dimension(800, 600));
-            setBackground(Color.BLACK);
-            try {
-                this.dataOutputStream = new PipedOutputStream();
-                this.dataInputStream = new PipedInputStream(dataOutputStream, 1024 * 1024); // 1MB buffer
-            } catch (IOException e) {
-                throw new RuntimeException("无法创建管道流", e);
-            }
+            return;
         }
 
-        public void start() {
-            if (!running) {
-                running = true;
-                decoderThread = new Thread(this, "H264-Decoder-Thread");
-                decoderThread.start();
+        String host = args[0].trim();
+        int port;
+        int wsPort = DEFAULT_WS_PORT;
+
+        try {
+            port = Integer.parseInt(args[1].trim());
+            if (args.length == 3) {
+                wsPort = Integer.parseInt(args[2].trim());
             }
+        } catch (NumberFormatException e) {
+            System.err.println("错误: 端口号必须是数字。");
+            printUsage();
+            return;
         }
 
-        public void stop() {
-            running = false;
-            try {
-                dataInputStream.close(); // 中断解码器的阻塞读取
-                dataOutputStream.close();
-            } catch (IOException e) {
-                // 忽略关闭时的异常
-            }
-            if (decoderThread != null) {
-                decoderThread.interrupt();
-                try {
-                    decoderThread.join(1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+        if (!isValidIpAddress(host) || !isValidPort(port) || !isValidPort(wsPort)) {
+            System.err.println("错误: 无效的IP地址或端口号。");
+            printUsage();
+            return;
         }
 
-        public void renderFrame(byte[] frameData) {
-            if (!running)
-                return;
-            try {
-                dataOutputStream.write(frameData);
-                dataOutputStream.flush();
-            } catch (IOException e) {
-                if (running) {
-                    System.err.println("写入帧数据到管道时出错: " + e.getMessage());
-                }
-            }
-        }
+        // 创建并启动H264流接收器
+        @SuppressWarnings("unused")
+        H264StreamReceiver receiver = new H264StreamReceiver(host, port, wsPort);
 
-        @Override
-        public void run() {
-            FFmpegFrameGrabber grabber = null;
-            try {
-                grabber = new FFmpegFrameGrabber(dataInputStream, 0);
-                grabber.setFormat("h264");
-                grabber.start();
-
-                while (running && !Thread.currentThread().isInterrupted()) {
-                    org.bytedeco.javacv.Frame frame = grabber.grab();
-                    if (frame == null)
-                        break;
-                    if (frame.image != null) {
-                        frameCounter++;
-                        currentFrame = converter.convert(frame);
-                        SwingUtilities.invokeLater(this::repaint);
-                    }
-                }
-            } catch (Exception e) {
-                if (running) {
-                    System.err.println("解码线程异常: " + e.getMessage());
-                }
-            } finally {
-                if (grabber != null) {
-                    try {
-                        grabber.stop();
-                        grabber.release();
-                    } catch (Exception e) {
-                        System.err.println("关闭grabber时出错: " + e.getMessage());
-                    }
-                }
-                System.out.println("解码线程已停止。");
-            }
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            if (currentFrame != null) {
-                int panelWidth = getWidth();
-                int panelHeight = getHeight();
-                int imgWidth = currentFrame.getWidth();
-                int imgHeight = currentFrame.getHeight();
-                double scale = Math.min((double) panelWidth / imgWidth, (double) panelHeight / imgHeight);
-                int scaledWidth = (int) (imgWidth * scale);
-                int scaledHeight = (int) (imgHeight * scale);
-                int x = (panelWidth - scaledWidth) / 2;
-                int y = (panelHeight - scaledHeight) / 2;
-                g.drawImage(currentFrame, x, y, scaledWidth, scaledHeight, this);
-
-                g.setColor(Color.YELLOW);
-                g.setFont(new Font("SansSerif", Font.BOLD, 16));
-                g.drawString("已解码: " + frameCounter, 10, 20);
-            } else {
-                g.setColor(Color.WHITE);
-                g.setFont(new Font("SansSerif", Font.BOLD, 20));
-                String msg = "等待视频流...";
-                FontMetrics fm = g.getFontMetrics();
-                int x = (getWidth() - fm.stringWidth(msg)) / 2;
-                int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
-                g.drawString(msg, x, y);
-            }
-        }
-
-        public synchronized void dispose() {
-            stop();
+        // 保持程序运行
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            System.out.println("\n程序被中断");
         }
     }
 }

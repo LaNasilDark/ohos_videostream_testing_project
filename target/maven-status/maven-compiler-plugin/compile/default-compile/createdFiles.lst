@@ -1,13 +1,2 @@
-com\LaNasil\H264NaluSplitter$NaluData.class
-com\LaNasil\H264StreamReceiver.class
-com\LaNasil\NetworkListener$1.class
-com\LaNasil\VlcjExample$1.class
-com\LaNasil\H264StreamReceiver$H264VideoRenderer.class
-com\LaNasil\NetworkListener$StartListenerAction.class
 com\LaNasil\H264StreamReceiver$1.class
-com\LaNasil\VlcjExample.class
-com\LaNasil\H264StreamReceiver$3.class
-com\LaNasil\H264StreamReceiver$ConnectAction.class
-com\LaNasil\H264NaluSplitter.class
-com\LaNasil\NetworkListener.class
-com\LaNasil\H264StreamReceiver$2.class
+com\LaNasil\H264StreamReceiver.class
