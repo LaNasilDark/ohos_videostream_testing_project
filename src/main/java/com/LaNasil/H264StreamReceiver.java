@@ -208,6 +208,10 @@ public class H264StreamReceiver extends JFrame {
 
             logMessage("成功连接到服务器 " + host + ":" + port);
 
+            // 立即显示初始统计信息
+            System.out.println(); // 为统计信息预留一行
+            printStats();
+
             // 启动接收线程（无需视频渲染）
             receiverThread = new Thread(this::receiveH264StreamHeadless, "H264-Receiver-Thread");
             receiverThread.start();
@@ -259,6 +263,13 @@ public class H264StreamReceiver extends JFrame {
 
                 // outputFileStream.write(buffer, 0, bytesRead);
                 updateStatistics(bytesRead);
+
+                // 实时更新统计显示
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastStatsUpdate >= 300) { // 每300毫秒更新一次
+                    printStats();
+                    lastStatsUpdate = currentTime;
+                }
             }
 
             // 处理最后一帧
@@ -293,6 +304,13 @@ public class H264StreamReceiver extends JFrame {
             // 发送到WebSocket客户端
             broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
 
+            // 实时更新统计信息（每处理一帧就更新一次）
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastStatsUpdate >= 500) { // 每500毫秒更新一次统计显示
+                printStats();
+                lastStatsUpdate = currentTime;
+            }
+
             // 只在详细模式下显示每帧信息
             if (System.getProperty("verbose") != null) {
                 logMessage(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
@@ -307,8 +325,13 @@ public class H264StreamReceiver extends JFrame {
     private void printStatsLoop() {
         while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
             try {
-                Thread.sleep(5000); // 每5秒显示一次统计
-                printStats();
+                Thread.sleep(200); // 每200毫秒检查一次，实现更流畅的更新
+                // 只有在数据发生变化时才重新打印统计信息
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastStatsUpdate >= 500) {
+                    printStats();
+                    lastStatsUpdate = currentTime;
+                }
             } catch (InterruptedException e) {
                 break;
             }
@@ -325,7 +348,8 @@ public class H264StreamReceiver extends JFrame {
             double dataRateKBps = (totalBytesReceived.get() * 1000.0) / (elapsedTime * 1024.0);
             long totalMB = totalBytesReceived.get() / (1024 * 1024);
 
-            System.out.printf("\r统计信息 - 帧数: %d | 帧率: %.2f fps | 数据率: %.2f KB/s | 总接收: %d MB | WebSocket客户端: %d",
+            // 使用 \r 实现原地更新，让统计信息实时刷新
+            System.out.printf("\r[实时统计] 帧数: %d | 帧率: %.2f fps | 数据率: %.2f KB/s | 总量: %d MB | WebSocket: %d 客户端",
                     frameCount.get(), fps, dataRateKBps, totalMB, webSocketClients.size());
             System.out.flush();
         }
