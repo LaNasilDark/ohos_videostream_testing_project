@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.LaNasil</groupId>
-    <artifactId>ohos_videostream_testing_project</artifactId>
+    <artifactId>ohos_videostream_testing_project_lite</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
