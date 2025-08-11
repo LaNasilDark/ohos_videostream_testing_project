@@ -10,6 +10,7 @@ import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -163,21 +164,35 @@ public class H264StreamReceiver {
      * 接收H.264流数据
      */
     private void receiveH264Stream() {
-        try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
-            byte[] buffer = new byte[8192];
+        try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream(), 16384)) {
+            byte[] buffer = new byte[16384]; // 增大缓冲区以减少I/O操作
             ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
             boolean inFrame = false;
+            int bufferOffset = 0; // 跟踪处理到的位置
 
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
-                int bytesRead = inputStream.read(buffer);
+                int bytesRead = inputStream.read(buffer, bufferOffset, buffer.length - bufferOffset);
                 if (bytesRead == -1) {
                     logMessage("服务器连接已关闭");
                     break;
                 }
 
-                for (int i = 0; i < bytesRead - 3; i++) {
-                    if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
-                        if (inFrame) {
+                int totalBytes = bufferOffset + bytesRead;
+                int processedBytes = 0;
+
+                // 搜索起始码并处理帧
+                for (int i = 0; i <= totalBytes - 4; i++) {
+                    if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 &&
+                            buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
+
+                        // 如果之前已经在一个帧中，先处理完整的前一帧
+                        if (inFrame && frameBuffer.size() > 0) {
+                            // 将当前起始码之前的数据添加到帧缓冲区
+                            if (i > processedBytes) {
+                                frameBuffer.write(buffer, processedBytes, i - processedBytes);
+                            }
+
+                            // 立即处理完整帧
                             byte[] frameData = frameBuffer.toByteArray();
                             if (frameData.length > 0) {
                                 processFrame(frameData);
@@ -185,19 +200,31 @@ public class H264StreamReceiver {
                             }
                             frameBuffer.reset();
                         }
+
+                        // 开始新帧，从起始码开始
                         inFrame = true;
+                        processedBytes = i;
                     }
                 }
 
-                if (inFrame) {
-                    frameBuffer.write(buffer, 0, bytesRead);
+                // 将剩余未处理的数据添加到帧缓冲区
+                if (inFrame && processedBytes < totalBytes) {
+                    frameBuffer.write(buffer, processedBytes, totalBytes - processedBytes);
+                }
+
+                // 处理缓冲区溢出：保留最后几个字节以防起始码跨越缓冲区边界
+                bufferOffset = 0;
+                if (totalBytes >= 4) {
+                    // 将最后3个字节复制到缓冲区开始，以防起始码被分割
+                    System.arraycopy(buffer, totalBytes - 3, buffer, 0, 3);
+                    bufferOffset = 3;
                 }
 
                 updateStatistics(bytesRead);
 
-                // 实时更新统计显示
+                // 减少统计更新频率，避免影响性能
                 long currentTime = System.currentTimeMillis();
-                if (currentTime - lastStatsUpdate >= 300) { // 每300毫秒更新一次
+                if (currentTime - lastStatsUpdate >= 500) { // 每500毫秒更新一次
                     printStats();
                     lastStatsUpdate = currentTime;
                 }
@@ -223,29 +250,41 @@ public class H264StreamReceiver {
      * 处理帧数据
      */
     private void processFrame(byte[] frameData) {
-        String base64Frame = Base64.getEncoder().encodeToString(frameData);
+        // 优化：减少不必要的计算，先进行基本检查
+        if (frameData.length <= 4) {
+            return; // 帧太小，跳过
+        }
 
         int startCodeLen = getStartCodeLength(frameData, 0);
-        if (frameData.length > startCodeLen) {
-            byte nalHeader = frameData[startCodeLen];
-            int nalType = nalHeader & 0x1F;
+        if (startCodeLen == 0 || frameData.length <= startCodeLen) {
+            return; // 无效帧，跳过
+        }
+
+        byte nalHeader = frameData[startCodeLen];
+        int nalType = nalHeader & 0x1F;
+
+        // 立即发送到WebSocket客户端，减少延迟
+        if (!webSocketClients.isEmpty()) {
+            // 异步处理Base64编码和广播，避免阻塞主处理流程
+            CompletableFuture.runAsync(() -> {
+                try {
+                    String base64Frame = Base64.getEncoder().encodeToString(frameData);
+                    String naluDesc = getNaluTypeDescription(nalType);
+                    broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
+                } catch (Exception e) {
+                    // 静默处理编码错误，避免影响主流程
+                    if (System.getProperty("verbose") != null) {
+                        logMessage("异步处理帧时出错: " + e.getMessage());
+                    }
+                }
+            });
+        }
+
+        // 只在详细模式下显示每帧信息
+        if (System.getProperty("verbose") != null) {
             String naluDesc = getNaluTypeDescription(nalType);
-
-            // 发送到WebSocket客户端
-            broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
-
-            // 实时更新统计信息（每处理一帧就更新一次）
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastStatsUpdate >= 500) { // 每500毫秒更新一次统计显示
-                printStats();
-                lastStatsUpdate = currentTime;
-            }
-
-            // 只在详细模式下显示每帧信息
-            if (System.getProperty("verbose") != null) {
-                logMessage(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
-                        nalType, naluDesc, frameData.length, webSocketClients.size()));
-            }
+            logMessage(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
+                    nalType, naluDesc, frameData.length, webSocketClients.size()));
         }
     }
 
