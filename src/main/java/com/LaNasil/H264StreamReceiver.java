@@ -55,6 +55,9 @@ public class H264StreamReceiver extends JFrame {
     // 视频渲染组件
     private H264VideoRenderer videoRenderer;
     private JFrame videoWindow;
+    private byte[] spsData;
+    private byte[] ppsData;
+    private final ByteArrayOutputStream h264Buffer = new ByteArrayOutputStream();
 
     // 网络和线程
     private Socket clientSocket;
@@ -569,7 +572,25 @@ public class H264StreamReceiver extends JFrame {
 
             @Override
             public void onParameterSetsReceived(List<byte[]> parameterSets) {
-                logMessage("收到完整参数集: SPS + PPS，总共 " + parameterSets.size() + " 个参数集");
+                logMessage("收到参数集回调: SPS/PPS，总共 " + parameterSets.size() + " 个NALU");
+                for (byte[] nalu : parameterSets) {
+                    if (nalu == null || nalu.length == 0)
+                        continue;
+
+                    // 获取NALU类型来区分SPS和PPS
+                    int startCodeLen = getStartCodeLength(nalu, 0);
+                    if (nalu.length > startCodeLen) {
+                        int nalType = nalu[startCodeLen] & 0x1F;
+
+                        if (nalType == 7) { // SPS NALU
+                            spsData = nalu;
+                            logMessage(String.format("已捕获并存储 SPS: 大小=%d字节", nalu.length));
+                        } else if (nalType == 8) { // PPS NALU
+                            ppsData = nalu;
+                            logMessage(String.format("已捕获并存储 PPS: 大小=%d字节", nalu.length));
+                        }
+                    }
+                }
             }
         });
     }
@@ -800,9 +821,7 @@ public class H264StreamReceiver extends JFrame {
                         updateWebSocketClientCount();
                     });
                 }
-
-                String message = "WebSocket服务器已停止";
-                logMessage(message);
+                logMessage("WebSocket服务器已停止");
             } catch (Exception ex) {
                 String errorMessage = "停止WebSocket服务器时出错: " + ex.getMessage();
                 logMessage(errorMessage);

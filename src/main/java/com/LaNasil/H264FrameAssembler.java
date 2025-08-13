@@ -293,6 +293,7 @@ public class H264FrameAssembler {
                         java.awt.image.BufferedImage rgbImage = decoder.decodeToRGB(frameData);
                         if (rgbImage != null) {
                             rgbFrameCallback.onRGBFrameComplete(rgbImage, isKeyFrame, frameNumber);
+                            System.out.println("RGB转换成功，帧号: " + frameNumber);
                         } else {
                             System.err.println("RGB转换失败，帧号: " + frameNumber);
                         }
