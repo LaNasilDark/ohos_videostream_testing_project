@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单视频显示器</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        
+        .header {
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #333;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        
+        .controls input {
+            padding: 8px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 4px;
+        }
+        
+        .controls button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        
+        .controls button:hover {
+            background-color: #0056b3;
+        }
+        
+        .controls button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+        
+        .video-container {
+            min-height: 400px;
+            background-color: #000;
+            border: 2px solid #333;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        .video-display {
+            max-width: 100%;
+            max-height: 600px;
+            border-radius: 4px;
+        }
+        
+        .info {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 8px;
+            display: inline-block;
+            font-family: monospace;
+        }
+        
+        .status {
+            margin: 10px 0;
+        }
+        
+        .waiting {
+            color: #888;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎥 视频流显示器</h1>
+    </div>
+    
+    <div class="controls">
+        <input type="text" id="serverUrl" value="ws://localhost:8080" placeholder="WebSocket服务器地址">
+        <button id="connectBtn">连接</button>
+        <button id="disconnectBtn" disabled>断开</button>
+    </div>
+    
+    <div class="status">
+        <strong>状态:</strong> <span id="status">未连接</span> | 
+        <strong>帧数:</strong> <span id="frameCount">0</span> | 
+        <strong>帧率:</strong> <span id="fps">0 fps</span>
+    </div>
+    
+    <div class="video-container" id="videoContainer">
+        <div class="waiting">等待连接...</div>
+    </div>
+    
+    <div class="info" id="frameInfo" style="display: none;">
+        <div id="frameDetails"></div>
+    </div>
+
+    <script>
+        class SimpleVideoClient {
+            constructor() {
+                this.socket = null;
+                this.isConnected = false;
+                this.frameCount = 0;
+                this.startTime = null;
+                this.frameRates = [];
+                
+                this.initElements();
+                this.bindEvents();
+            }
+            
+            initElements() {
+                this.connectBtn = document.getElementById('connectBtn');
+                this.disconnectBtn = document.getElementById('disconnectBtn');
+                this.serverUrlInput = document.getElementById('serverUrl');
+                this.statusSpan = document.getElementById('status');
+                this.frameCountSpan = document.getElementById('frameCount');
+                this.fpsSpan = document.getElementById('fps');
+                this.videoContainer = document.getElementById('videoContainer');
+                this.frameInfo = document.getElementById('frameInfo');
+                this.frameDetails = document.getElementById('frameDetails');
+            }
+            
+            bindEvents() {
+                this.connectBtn.addEventListener('click', () => this.connect());
+                this.disconnectBtn.addEventListener('click', () => this.disconnect());
+                
+                this.serverUrlInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.connect();
+                });
+            }
+            
+            connect() {
+                if (this.isConnected) return;
+                
+                const url = this.serverUrlInput.value.trim();
+                if (!url) {
+                    alert('请输入WebSocket服务器地址');
+                    return;
+                }
+                
+                this.updateStatus('连接中...');
+                
+                try {
+                    this.socket = new WebSocket(url);
+                    
+                    this.socket.onopen = () => {
+                        this.isConnected = true;
+                        this.startTime = Date.now();
+                        this.frameCount = 0;
+                        this.frameRates = [];
+                        
+                        this.updateStatus('已连接');
+                        this.connectBtn.disabled = true;
+                        this.disconnectBtn.disabled = false;
+                        this.serverUrlInput.disabled = true;
+                        
+                        this.showMessage('等待视频数据...');
+                    };
+                    
+                    this.socket.onmessage = (event) => {
+                        this.handleMessage(event.data);
+                    };
+                    
+                    this.socket.onclose = () => {
+                        this.handleDisconnection();
+                    };
+                    
+                    this.socket.onerror = () => {
+                        this.updateStatus('连接错误');
+                        this.handleDisconnection();
+                    };
+                    
+                } catch (error) {
+                    this.updateStatus('连接失败');
+                    console.error('连接错误:', error);
+                }
+            }
+            
+            disconnect() {
+                if (this.socket) {
+                    this.socket.close();
+                }
+                this.handleDisconnection();
+            }
+            
+            handleDisconnection() {
+                this.isConnected = false;
+                this.updateStatus('未连接');
+                this.connectBtn.disabled = false;
+                this.disconnectBtn.disabled = true;
+                this.serverUrlInput.disabled = false;
+                this.showMessage('连接已断开');
+                this.frameInfo.style.display = 'none';
+            }
+            
+            handleMessage(data) {
+                try {
+                    const message = JSON.parse(data);
+                    
+                    // 只处理解码后的图像帧
+                    if (message.type === 'decoded_frame') {
+                        this.displayDecodedFrame(message);
+                    } else if (message.type === 'complete_frame') {
+                        // 可以在这里添加完整帧的处理逻辑
+                        console.log('收到完整帧:', message.frameNumber);
+                    }
+                    
+                } catch (error) {
+                    console.error('解析消息失败:', error);
+                }
+            }
+            
+            displayDecodedFrame(message) {
+                this.frameCount++;
+                
+                // 显示图像
+                const img = document.createElement('img');
+                img.className = 'video-display';
+                img.src = `data:image/png;base64,${message.data}`;
+                
+                img.onload = () => {
+                    this.videoContainer.innerHTML = '';
+                    this.videoContainer.appendChild(img);
+                };
+                
+                // 更新统计信息
+                this.updateStatistics();
+                
+                // 显示帧信息
+                this.updateFrameInfo(message);
+                
+                // 计算帧率
+                this.calculateFrameRate();
+            }
+            
+            calculateFrameRate() {
+                const now = Date.now();
+                this.frameRates.push(now);
+                
+                // 保持最近1秒的数据
+                this.frameRates = this.frameRates.filter(time => now - time <= 1000);
+                
+                this.fpsSpan.textContent = `${this.frameRates.length} fps`;
+            }
+            
+            updateStatistics() {
+                this.frameCountSpan.textContent = this.frameCount;
+            }
+            
+            updateFrameInfo(message) {
+                this.frameDetails.innerHTML = `
+                    帧号: ${message.frameNumber}<br>
+                    尺寸: ${message.width} x ${message.height}<br>
+                    格式: ${message.format}<br>
+                    时间: ${new Date(message.timestamp).toLocaleTimeString()}
+                `;
+                this.frameInfo.style.display = 'block';
+            }
+            
+            updateStatus(status) {
+                this.statusSpan.textContent = status;
+                this.statusSpan.style.color = status === '已连接' ? '#4CAF50' : '#ff6b6b';
+            }
+            
+            showMessage(message) {
+                this.videoContainer.innerHTML = `<div class="waiting">${message}</div>`;
+            }
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            new SimpleVideoClient();
+        });
+    </script>
+</body>
+</html>

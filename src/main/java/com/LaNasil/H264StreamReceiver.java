@@ -145,6 +145,7 @@ public class H264StreamReceiver extends JFrame {
             System.out.println("\n正在关闭程序...");
             disconnectFromServer();
             stopWebSocketServer();
+            disposeVideoResources();
             System.out.println("程序已关闭");
         }));
 
@@ -219,6 +220,10 @@ public class H264StreamReceiver extends JFrame {
             lastStatsUpdate = startTime;
 
             logMessage("成功连接到服务器 " + host + ":" + port);
+
+            // 创建视频渲染器用于解码和Base64广播（无头模式）
+            videoRenderer = new H264VideoRenderer(this);
+            videoRenderer.start();
 
             // 立即显示初始统计信息
             System.out.println(); // 为统计信息预留一行
@@ -605,7 +610,7 @@ public class H264StreamReceiver extends JFrame {
             logMessage("警告: 帧数据可能不完整或无效，帧号=" + frameNumber);
             return;
         }
-        
+
         String base64Frame = Base64.getEncoder().encodeToString(frameData);
 
         // 发送到视频渲染器进行解码显示
@@ -654,7 +659,7 @@ public class H264StreamReceiver extends JFrame {
 
     private void createVideoWindow() {
         videoWindow = new JFrame("H.264 视频播放");
-        videoRenderer = new H264VideoRenderer();
+        videoRenderer = new H264VideoRenderer(this);
 
         videoWindow.add(videoRenderer);
         videoWindow.setSize(800, 600);
@@ -870,6 +875,29 @@ public class H264StreamReceiver extends JFrame {
                 }
             });
 
+            // 如果客户端数量发生变化,更新显示
+            updateWebSocketClientCount();
+        }
+    }
+
+    /**
+     * 通用的WebSocket广播方法
+     */
+    private void broadcastToWebSocketClients(String jsonMessage) {
+        if (!webSocketClients.isEmpty()) {
+            webSocketClients.removeIf(client -> {
+                try {
+                    if (client.isOpen()) {
+                        client.send(jsonMessage);
+                        return false; // 保留连接
+                    } else {
+                        return true; // 移除断开的连接
+                    }
+                } catch (Exception e) {
+                    logMessage("WebSocket发送失败: " + e.getMessage());
+                    return true; // 移除出错的连接
+                }
+            });
             // 如果客户端数量发生变化,更新显示
             updateWebSocketClientCount();
         }
@@ -1310,8 +1338,10 @@ public class H264StreamReceiver extends JFrame {
         private final PipedInputStream dataInputStream;
         private volatile boolean running = false;
         private Thread decoderThread;
+        private final H264StreamReceiver parentReceiver; // 添加对外部类的引用
 
-        public H264VideoRenderer() {
+        public H264VideoRenderer(H264StreamReceiver parentReceiver) {
+            this.parentReceiver = parentReceiver;
             setPreferredSize(new Dimension(800, 600));
             setBackground(Color.BLACK);
             try {
@@ -1365,22 +1395,30 @@ public class H264StreamReceiver extends JFrame {
         public void run() {
             FFmpegFrameGrabber grabber = null;
             try {
+
                 grabber = new FFmpegFrameGrabber(dataInputStream, 0);
                 grabber.setFormat("h264");
                 grabber.start();
 
                 while (running && !Thread.currentThread().isInterrupted()) {
+
                     org.bytedeco.javacv.Frame frame = grabber.grab();
                     if (frame == null)
                         break;
                     if (frame.image != null) {
+                        System.out.println("开始解码，目前时间: " + System.currentTimeMillis());
                         frameCounter++;
                         currentFrame = converter.convert(frame);
+
+                        // 将解码后的图像编码为Base64并转发
+                        broadcastDecodedFrameAsBase64(currentFrame, frameCounter);
+
                         System.out.println(currentFrame.toString());
                         System.out.println("解码帧: " + frameCounter + ", 大小: " + currentFrame.getWidth() + "x"
                                 + currentFrame.getHeight());
 
                         SwingUtilities.invokeLater(this::repaint);
+                        System.out.println("解码线程已更新帧，现在时间" + System.currentTimeMillis());
                     }
                 }
             } catch (Exception e) {
@@ -1427,6 +1465,48 @@ public class H264StreamReceiver extends JFrame {
                 int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
                 g.drawString(msg, x, y);
             }
+        }
+
+        /**
+         * 将解码后的BufferedImage转换为Base64并广播到WebSocket客户端
+         * 
+         * @param image       解码后的BufferedImage
+         * @param frameNumber 帧号
+         */
+        private void broadcastDecodedFrameAsBase64(BufferedImage image, long frameNumber) {
+            try {
+                // 将BufferedImage转换为Base64字符串
+                String base64Image = bufferedImageToBase64(image, "PNG");
+
+                // 创建JSON消息
+                String jsonMessage = String.format(
+                        "{\"type\":\"decoded_frame\",\"data\":\"%s\",\"frameNumber\":%d,\"width\":%d,\"height\":%d,\"format\":\"PNG\",\"timestamp\":%d}",
+                        base64Image, frameNumber, image.getWidth(), image.getHeight(), System.currentTimeMillis());
+
+                // 广播到WebSocket客户端
+                parentReceiver.broadcastToWebSocketClients(jsonMessage);
+
+                System.out.println("已广播解码帧到WebSocket客户端: 帧号=" + frameNumber +
+                        ", 尺寸=" + image.getWidth() + "x" + image.getHeight());
+
+            } catch (Exception e) {
+                System.err.println("广播解码帧失败: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        /**
+         * 将BufferedImage转换为Base64字符串
+         * 
+         * @param image  BufferedImage对象
+         * @param format 图像格式 (PNG, JPEG等)
+         * @return Base64编码的字符串
+         */
+        private String bufferedImageToBase64(BufferedImage image, String format) throws IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(image, format, baos);
+            byte[] imageBytes = baos.toByteArray();
+            return Base64.getEncoder().encodeToString(imageBytes);
         }
 
         public synchronized void dispose() {
