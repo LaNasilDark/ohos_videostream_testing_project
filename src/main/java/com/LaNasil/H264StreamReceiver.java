@@ -17,6 +17,8 @@ import java.net.Socket;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Set;
+import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -71,6 +73,9 @@ public class H264StreamReceiver extends JFrame {
     private long startTime;
     private long lastStatsUpdate;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+
+    // H.264帧组装器
+    private H264FrameAssembler frameAssembler;
 
     // 自动连接参数
     private String autoConnectHost;
@@ -127,6 +132,9 @@ public class H264StreamReceiver extends JFrame {
         System.out.println("WebSocket端口: " + DEFAULT_WS_PORT);
         System.out.println("按 Ctrl+C 退出程序");
         System.out.println("=====================================");
+
+        // 初始化帧组装器
+        initializeFrameAssembler();
 
         // 添加关闭钩子
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -233,8 +241,11 @@ public class H264StreamReceiver extends JFrame {
     private void receiveH264StreamHeadless() {
         try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
             byte[] buffer = new byte[8192];
-            ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
-            boolean inFrame = false;
+            ByteArrayOutputStream streamBuffer = new ByteArrayOutputStream();
+
+            // 状态机变量用于精确解析NALU边界
+            int state = 0;
+            int lastNaluStart = -1;
 
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
                 int bytesRead = inputStream.read(buffer);
@@ -243,39 +254,39 @@ public class H264StreamReceiver extends JFrame {
                     break;
                 }
 
-                for (int i = 0; i < bytesRead - 3; i++) {
-                    if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
-                        if (inFrame) {
-                            byte[] frameData = frameBuffer.toByteArray();
-                            if (frameData.length > 0) {
-                                processFrameHeadless(frameData);
-                                frameCount.incrementAndGet();
-                            }
-                            frameBuffer.reset();
-                        }
-                        inFrame = true;
-                    }
+                // 将读取的数据添加到流缓冲区
+                streamBuffer.write(buffer, 0, bytesRead);
+                byte[] currentData = streamBuffer.toByteArray();
+
+                // 使用状态机解析NALU单元
+                int processedBytes = parseNalusWithStateMachine(currentData, lastNaluStart, state);
+
+                // 保留未处理的数据
+                if (processedBytes > 0 && processedBytes < currentData.length) {
+                    byte[] remainingData = Arrays.copyOfRange(currentData, processedBytes, currentData.length);
+                    streamBuffer.reset();
+                    streamBuffer.write(remainingData);
                 }
 
-                if (inFrame) {
-                    frameBuffer.write(buffer, 0, bytesRead);
-                }
-
-                // outputFileStream.write(buffer, 0, bytesRead);
                 updateStatistics(bytesRead);
 
                 // 实时更新统计显示
                 long currentTime = System.currentTimeMillis();
-                if (currentTime - lastStatsUpdate >= 300) { // 每300毫秒更新一次
+                if (currentTime - lastStatsUpdate >= 300) {
                     printStats();
                     lastStatsUpdate = currentTime;
                 }
             }
 
-            // 处理最后一帧
-            if (inFrame && frameBuffer.size() > 0) {
-                processFrameHeadless(frameBuffer.toByteArray());
-                frameCount.incrementAndGet();
+            // 处理剩余的数据
+            byte[] remainingData = streamBuffer.toByteArray();
+            if (remainingData.length > 0) {
+                processCompleteNalu(remainingData);
+            }
+
+            // 强制完成当前帧
+            if (frameAssembler != null) {
+                frameAssembler.forceCompleteFrame();
             }
 
         } catch (IOException e) {
@@ -289,33 +300,153 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 命令行模式下处理帧数据
+     * 使用状态机精确解析NALU单元
      */
-    private void processFrameHeadless(byte[] frameData) {
+    private int parseNalusWithStateMachine(byte[] data, int lastStart, int initialState) {
+        int state = initialState;
+        int lastNaluStart = lastStart;
+        int processedBytes = 0;
 
-        String base64Frame = Base64.getEncoder().encodeToString(frameData);
+        for (int i = 0; i < data.length; i++) {
+            switch (state) {
+                case 0: // 寻找第一个0x00
+                    if (data[i] == 0x00) {
+                        state = 1;
+                    }
+                    break;
 
-        int startCodeLen = getStartCodeLength(frameData, 0);
-        if (frameData.length > startCodeLen) {
-            byte nalHeader = frameData[startCodeLen];
+                case 1: // 寻找第二个0x00
+                    if (data[i] == 0x00) {
+                        state = 2;
+                    } else {
+                        state = 0;
+                    }
+                    break;
+
+                case 2: // 可能是3字节起始码或4字节起始码
+                    if (data[i] == 0x00) {
+                        state = 3; // 可能是4字节起始码
+                    } else if (data[i] == 0x01) {
+                        // 找到3字节起始码 (00 00 01)
+                        if (lastNaluStart != -1) {
+                            // 处理前一个NALU
+                            byte[] naluData = Arrays.copyOfRange(data, lastNaluStart, i - 2);
+                            processCompleteNalu(naluData);
+                            processedBytes = i - 2;
+                        }
+                        lastNaluStart = i - 2;
+                        state = 0;
+                    } else {
+                        state = 0;
+                    }
+                    break;
+
+                case 3: // 寻找4字节起始码的0x01
+                    if (data[i] == 0x01) {
+                        // 找到4字节起始码 (00 00 00 01)
+                        if (lastNaluStart != -1) {
+                            // 处理前一个NALU
+                            byte[] naluData = Arrays.copyOfRange(data, lastNaluStart, i - 3);
+                            processCompleteNalu(naluData);
+                            processedBytes = i - 3;
+                        }
+                        lastNaluStart = i - 3;
+                        state = 0;
+                    } else if (data[i] != 0x00) {
+                        state = 0;
+                    }
+                    // 如果是0x00，保持在state 3
+                    break;
+            }
+        }
+
+        return processedBytes;
+    }
+
+    /**
+     * 处理完整的NALU单元
+     */
+    private void processCompleteNalu(byte[] naluData) {
+        if (naluData == null || naluData.length < 4) {
+            return;
+        }
+
+        // 验证起始码
+        if (!isValidStartCode(naluData, 0)) {
+            logMessage("警告: NALU数据不包含有效起始码");
+            return;
+        }
+
+        // 获取NALU类型和描述
+        int startCodeLen = getStartCodeLength(naluData, 0);
+        if (startCodeLen > 0 && naluData.length > startCodeLen) {
+            byte nalHeader = naluData[startCodeLen];
             int nalType = nalHeader & 0x1F;
-            String naluDesc = getNaluTypeDescription(nalType);
+            String naluDesc = H264FrameAssembler.getNaluTypeDescription(nalType);
 
-            // 发送到WebSocket客户端
-            broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
-
-            // 实时更新统计信息（每处理一帧就更新一次）
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastStatsUpdate >= 500) { // 每500毫秒更新一次统计显示
-                printStats();
-                lastStatsUpdate = currentTime;
+            // 处理NALU单元
+            if (frameAssembler != null) {
+                frameAssembler.processNALU(naluData);
             }
 
-            // 只在详细模式下显示每帧信息
+            // 发送原始NALU到WebSocket（向后兼容）
+            sendRawNaluToWebSocket(naluData);
+
+            // 详细日志（可选）
             if (System.getProperty("verbose") != null) {
-                logMessage(String.format("处理帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
-                        nalType, naluDesc, frameData.length, webSocketClients.size()));
+                logMessage(String.format("解析NALU: 类型=%d (%s), 大小=%d字节",
+                        nalType, naluDesc, naluData.length));
             }
+        }
+    }
+
+    /**
+     * 验证起始码是否有效
+     */
+    private boolean isValidStartCode(byte[] data, int pos) {
+        if (data.length < pos + 3) {
+            return false;
+        }
+
+        // 检查3字节起始码 (00 00 01)
+        if (pos + 2 < data.length &&
+                data[pos] == 0x00 && data[pos + 1] == 0x00 && data[pos + 2] == 0x01) {
+            return true;
+        }
+
+        // 检查4字节起始码 (00 00 00 01)
+        if (pos + 3 < data.length &&
+                data[pos] == 0x00 && data[pos + 1] == 0x00 &&
+                data[pos + 2] == 0x00 && data[pos + 3] == 0x01) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 调试方法：打印NALU解析统计信息
+     */
+    private void logNaluStatistics() {
+        if (frameAssembler != null) {
+            logMessage("帧组装器状态: " + frameAssembler.getFrameStats());
+        }
+    }
+
+    /**
+     * 发送原始NALU单元到WebSocket（向后兼容）
+     */
+    private void sendRawNaluToWebSocket(byte[] naluData) {
+        String base64Nalu = Base64.getEncoder().encodeToString(naluData);
+
+        int startCodeLen = getStartCodeLength(naluData, 0);
+        if (naluData.length > startCodeLen) {
+            byte nalHeader = naluData[startCodeLen];
+            int nalType = nalHeader & 0x1F;
+            String naluDesc = H264FrameAssembler.getNaluTypeDescription(nalType);
+
+            // 发送到WebSocket客户端（原始NALU格式）
+            broadcastFrameToWebSocket(base64Nalu, nalType, naluDesc, naluData.length);
         }
     }
 
@@ -352,6 +483,12 @@ public class H264StreamReceiver extends JFrame {
             System.out.printf("\r[实时统计] 帧数: %d | 帧率: %.2f fps | 数据率: %.2f KB/s | 总量: %d MB | WebSocket: %d 客户端",
                     frameCount.get(), fps, dataRateKBps, totalMB, webSocketClients.size());
             System.out.flush();
+
+            // 每10秒打印一次详细的NALU统计
+            if (elapsedTime % 10000 < 500 && System.getProperty("verbose") != null) {
+                System.out.println(); // 换行
+                logNaluStatistics();
+            }
         }
     }
 
@@ -362,6 +499,9 @@ public class H264StreamReceiver extends JFrame {
         setTitle("H.264 视频流接收器 (支持WebSocket)");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
+
+        // 初始化帧组装器
+        initializeFrameAssembler();
 
         // 创建控制面板
         JPanel controlPanel = createControlPanel();
@@ -418,8 +558,78 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 创建视频显示窗口
+     * 初始化帧组装器
      */
+    private void initializeFrameAssembler() {
+        frameAssembler = new H264FrameAssembler(new H264FrameAssembler.FrameCallback() {
+            @Override
+            public void onFrameComplete(byte[] frameData, boolean isKeyFrame, long frameNumber) {
+                handleCompleteFrame(frameData, isKeyFrame, frameNumber);
+            }
+
+            @Override
+            public void onParameterSetsReceived(List<byte[]> parameterSets) {
+                logMessage("收到完整参数集: SPS + PPS，总共 " + parameterSets.size() + " 个参数集");
+            }
+        });
+    }
+
+    /**
+     * 处理完整的组装帧
+     */
+    private void handleCompleteFrame(byte[] frameData, boolean isKeyFrame, long frameNumber) {
+        // 验证帧数据的有效性
+        if (!H264FrameAssembler.isValidH264Frame(frameData)) {
+            logMessage("警告: 帧数据可能不完整或无效，帧号=" + frameNumber);
+            return;
+        }
+
+        String base64Frame = Base64.getEncoder().encodeToString(frameData);
+
+        // 发送到视频渲染器进行解码显示
+        if (videoRenderer != null) {
+            videoRenderer.renderFrame(frameData);
+        }
+
+        // 发送到WebSocket客户端
+        String frameType = isKeyFrame ? "关键帧" : "普通帧";
+        broadcastCompleteFrameToWebSocket(base64Frame, frameType, frameData.length, frameNumber);
+
+        // 更新统计
+        frameCount.incrementAndGet();
+
+        logMessage(String.format("处理完整帧: 帧号=%d, 类型=%s, 大小=%d 字节, 有效性=✓, WS客户端=%d",
+                frameNumber, frameType, frameData.length, webSocketClients.size()));
+    }
+
+    /**
+     * 广播完整帧到WebSocket客户端
+     */
+    private void broadcastCompleteFrameToWebSocket(String base64Frame, String frameType, int frameSize,
+            long frameNumber) {
+        if (!webSocketClients.isEmpty()) {
+            String jsonMessage = String.format(
+                    "{\"type\":\"complete_frame\",\"data\":\"%s\",\"frameType\":\"%s\",\"size\":%d,\"frameNumber\":%d,\"timestamp\":%d}",
+                    base64Frame, frameType, frameSize, frameNumber, System.currentTimeMillis());
+
+            webSocketClients.removeIf(client -> {
+                try {
+                    if (client.isOpen()) {
+                        client.send(jsonMessage);
+                        return false;
+                    } else {
+                        return true;
+                    }
+                } catch (Exception e) {
+                    logMessage("发送WebSocket消息失败 [" + client.getRemoteSocketAddress() + "]: " + e.getMessage());
+                    return true;
+                }
+            });
+
+            updateWebSocketClientCount();
+        }
+    }
+
     private void createVideoWindow() {
         videoWindow = new JFrame("H.264 视频播放");
         videoRenderer = new H264VideoRenderer();
@@ -724,13 +934,16 @@ public class H264StreamReceiver extends JFrame {
     }
 
     /**
-     * 接收H.264流数据的主方法
+     * 接收H.264流数据的主方法（GUI模式）
      */
     private void receiveH264Stream() {
         try (BufferedInputStream inputStream = new BufferedInputStream(clientSocket.getInputStream())) {
             byte[] buffer = new byte[8192];
-            ByteArrayOutputStream frameBuffer = new ByteArrayOutputStream();
-            boolean inFrame = false;
+            ByteArrayOutputStream streamBuffer = new ByteArrayOutputStream();
+
+            // 状态机变量用于精确解析NALU边界
+            int state = 0;
+            int lastNaluStart = -1;
 
             while (isConnected.get() && !Thread.currentThread().isInterrupted()) {
                 int bytesRead = inputStream.read(buffer);
@@ -739,27 +952,20 @@ public class H264StreamReceiver extends JFrame {
                     break;
                 }
 
-                for (int i = 0; i < bytesRead - 3; i++) {
-                    // 查找起始码 0x00 0x00 0x00 0x01
-                    if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
-                        if (inFrame) {
-                            // 发现新帧的起始,处理已缓冲的旧帧
-                            byte[] frameData = frameBuffer.toByteArray();
-                            if (frameData.length > 0) {
-                                renderFrame(frameData);
-                                frameCount.incrementAndGet();
-                            }
-                            frameBuffer.reset();
-                        }
-                        inFrame = true;
-                    }
+                // 将读取的数据添加到流缓冲区
+                streamBuffer.write(buffer, 0, bytesRead);
+                byte[] currentData = streamBuffer.toByteArray();
+
+                // 使用状态机解析NALU单元
+                int processedBytes = parseNalusWithStateMachine(currentData, lastNaluStart, state);
+
+                // 保留未处理的数据
+                if (processedBytes > 0 && processedBytes < currentData.length) {
+                    byte[] remainingData = Arrays.copyOfRange(currentData, processedBytes, currentData.length);
+                    streamBuffer.reset();
+                    streamBuffer.write(remainingData);
                 }
 
-                if (inFrame) {
-                    frameBuffer.write(buffer, 0, bytesRead);
-                }
-
-                // outputFileStream.write(buffer, 0, bytesRead);
                 updateStatistics(bytesRead);
 
                 long currentTime = System.currentTimeMillis();
@@ -769,10 +975,15 @@ public class H264StreamReceiver extends JFrame {
                 }
             }
 
-            // 处理最后一帧
-            if (inFrame && frameBuffer.size() > 0) {
-                renderFrame(frameBuffer.toByteArray());
-                frameCount.incrementAndGet();
+            // 处理剩余的数据
+            byte[] remainingData = streamBuffer.toByteArray();
+            if (remainingData.length > 0) {
+                processCompleteNalu(remainingData);
+            }
+
+            // 强制完成当前帧
+            if (frameAssembler != null) {
+                frameAssembler.forceCompleteFrame();
             }
 
         } catch (IOException e) {
@@ -784,55 +995,6 @@ public class H264StreamReceiver extends JFrame {
                 disconnectFromServer();
                 logMessage("H.264流接收已停止");
             });
-        }
-    }
-
-    /**
-     * 渲染接收到的H.264帧
-     *
-     * @param frameData 完整的帧数据
-     */
-    private void renderFrame(byte[] frameData) {
-        String base64Frame = Base64.getEncoder().encodeToString(frameData);
-
-        if (videoRenderer != null) {
-            videoRenderer.renderFrame(frameData);
-        }
-
-        int startCodeLen = getStartCodeLength(frameData, 0);
-        if (frameData.length > startCodeLen) {
-            byte nalHeader = frameData[startCodeLen];
-            int nalType = nalHeader & 0x1F;
-            String naluDesc = getNaluTypeDescription(nalType);
-
-            // 发送到WebSocket客户端
-            broadcastFrameToWebSocket(base64Frame, nalType, naluDesc, frameData.length);
-
-            logMessage(String.format("渲染帧: 类型=%d (%s), 大小=%d 字节, WS客户端=%d",
-                    nalType, naluDesc, frameData.length, webSocketClients.size()));
-        }
-    }
-
-    /**
-     * 获取NALU类型描述
-     *
-     * @param type NALU类型值
-     * @return 描述字符串
-     */
-    private String getNaluTypeDescription(int type) {
-        switch (type) {
-            case 1:
-                return "非IDR图像";
-            case 5:
-                return "IDR图像";
-            case 6:
-                return "SEI";
-            case 7:
-                return "SPS参数";
-            case 8:
-                return "PPS参数";
-            default:
-                return "其他";
         }
     }
 
@@ -884,6 +1046,12 @@ public class H264StreamReceiver extends JFrame {
     private void resetStatistics() {
         totalBytesReceived.set(0);
         frameCount.set(0);
+
+        // 重置帧组装器
+        if (frameAssembler != null) {
+            frameAssembler.reset();
+        }
+
         if (!noUiMode) {
             SwingUtilities.invokeLater(() -> {
                 fpsLabel.setText("帧率: 0.0 fps");
@@ -1188,6 +1356,10 @@ public class H264StreamReceiver extends JFrame {
                     if (frame.image != null) {
                         frameCounter++;
                         currentFrame = converter.convert(frame);
+
+                        System.out.println("解码帧: " + frameCounter + ", 大小: " + currentFrame.getWidth() + "x"
+                                + currentFrame.getHeight());
+
                         SwingUtilities.invokeLater(this::repaint);
                     }
                 }
