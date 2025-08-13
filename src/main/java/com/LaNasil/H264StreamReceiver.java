@@ -7,6 +7,7 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 import javax.swing.*;
+import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -604,7 +605,7 @@ public class H264StreamReceiver extends JFrame {
             logMessage("警告: 帧数据可能不完整或无效，帧号=" + frameNumber);
             return;
         }
-
+        
         String base64Frame = Base64.getEncoder().encodeToString(frameData);
 
         // 发送到视频渲染器进行解码显示
@@ -1375,7 +1376,7 @@ public class H264StreamReceiver extends JFrame {
                     if (frame.image != null) {
                         frameCounter++;
                         currentFrame = converter.convert(frame);
-
+                        System.out.println(currentFrame.toString());
                         System.out.println("解码帧: " + frameCounter + ", 大小: " + currentFrame.getWidth() + "x"
                                 + currentFrame.getHeight());
 
