@@ -1,2 +1,5 @@
+com\LaNasil\H264NaluSplitter$NaluData.class
+com\LaNasil\H264NaluSplitter.class
+com\LaNasil\H264StreamReceiver$NaluInfo.class
 com\LaNasil\H264StreamReceiver$1.class
 com\LaNasil\H264StreamReceiver.class

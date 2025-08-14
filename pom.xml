@@ -25,14 +25,14 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- JavaCV依赖 -->
+        <!-- JavaCV依赖 - 回退到稳定版本1.5.9 -->
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv-platform</artifactId>
-            <version>1.5.10</version>
+            <version>1.5.9</version>
         </dependency>
 
-        <!-- OpenCV 扩展 -->
+        <!-- OpenCV 扩展 - 使用与JavaCV 1.5.9匹配的版本 -->
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>opencv-platform</artifactId>
@@ -51,6 +51,13 @@
             <groupId>uk.co.caprica</groupId>
             <artifactId>vlcj</artifactId>
             <version>4.8.2</version>
+        </dependency>
+
+        <!-- SLF4J 日志实现 -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.9</version>
         </dependency>
     </dependencies>
 
