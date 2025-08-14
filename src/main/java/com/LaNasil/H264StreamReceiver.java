@@ -56,9 +56,10 @@ public class H264StreamReceiver extends JFrame {
     // 视频渲染组件
     private H264VideoRenderer videoRenderer;
     private JFrame videoWindow;
+    @SuppressWarnings("unused")
     private byte[] spsData;
+    @SuppressWarnings("unused")
     private byte[] ppsData;
-    private final ByteArrayOutputStream h264Buffer = new ByteArrayOutputStream();
 
     // 网络和线程
     private Socket clientSocket;
