@@ -67,7 +67,7 @@ timeout /t 1 >nul
 echo Starting client for LAN communication...
 REM java -cp classes com.example.H264StreamReceiver 192.168.5.114 8000
 REM python ./client/main.py
-java -jar ohos_videostream_testing_project-1.0.0-jar-with-dependencies.jar --noui 192.168.5.114 8000
-
+java -jar ohos_videostream_testing_project-1.0.0-jar-with-dependencies.jar 192.168.5.25 8000
+REM java -Dverbose=true -jar ohos_videostream_testing_project_lite-1.0.0-jar-with-dependencies.jar 192.168.5.114 8000
 
 endlocal

@@ -73,7 +73,7 @@ launch.bat [设备ID]
 3. **JAR客户端（无UI模式）**
 
    ```bash
-   ohos_videostream_testing_project-1.0.0-jar-with-dependencies --noui [IP地址] 8000
+   ohos_videostream_testing_project-1.0.0-jar-with-dependencies [IP地址] 8000
    ```
 
 ## 功能特性
